@@ -137,19 +137,32 @@ export async function runQuery(
     orderSql = ` order by ${quoteIdent(opts.orderBy)} ${dir}`;
   }
 
+  // Structured per-column filters: column validated against the catalog,
+  // operator whitelisted, value bound as a parameter (injection-safe). These
+  // params occupy $1..$k, so limit/offset shift to $k+1/$k+2 below.
+  const { clauses: fClauses, params: fParams } = compileFilters(opts.filters ?? [], valid);
+
   // Free-form WHERE: user-authored SQL against their own database (same trust
   // model as the app's other editing). Can't be parameterized, so a bad
   // expression surfaces as a Postgres error the UI shows verbatim.
   const where = typeof opts.where === "string" ? opts.where.trim() : "";
-  const whereSql = where ? ` where ${where}` : "";
 
+  const whereParts = [...(where ? [`(${where})`] : []), ...fClauses];
+  const whereSql = whereParts.length ? ` where ${whereParts.join(" and ")}` : "";
+
+  const limPh = `$${fParams.length + 1}`;
+  const offPh = `$${fParams.length + 2}`;
   const ref = `${quoteIdent(schema)}.${quoteIdent(table)}`;
-  const sql = `select * from ${ref}${whereSql}${orderSql} limit $1 offset $2`;
+  const sql = `select * from ${ref}${whereSql}${orderSql} limit ${limPh} offset ${offPh}`;
 
   // Fetch one extra row past the page: if it comes back, there's a next page.
   // This gives Prev/Next paging without an expensive COUNT(*) on large tables.
   const started = process.hrtime.bigint();
-  const r = await p.query({ text: sql, values: [limit + 1, offset], rowMode: "array" });
+  const r = await p.query({
+    text: sql,
+    values: [...fParams, limit + 1, offset],
+    rowMode: "array",
+  });
   const ms = Number(process.hrtime.bigint() - started) / 1e6;
 
   const hasMore = r.rows.length > limit;
@@ -166,6 +179,14 @@ export async function runQuery(
     return obj;
   });
 
+  // Human-readable WHERE for the preview bar: filters rendered with literal
+  // values (not $-params), combined with any free-form expression.
+  const previewParts = [
+    ...(where ? [`(${where})`] : []),
+    ...previewFilters(opts.filters ?? [], valid),
+  ];
+  const previewWhere = previewParts.length ? ` WHERE ${previewParts.join(" AND ")}` : "";
+
   return {
     columns,
     pk,
@@ -174,8 +195,61 @@ export async function runQuery(
     offset,
     hasMore,
     ms: Math.round(ms * 10) / 10,
-    previewSql: `SELECT * FROM ${ref}${where ? ` WHERE ${where}` : ""}${orderSql.toUpperCase()} LIMIT ${limit} OFFSET ${offset}`,
+    previewSql: `SELECT * FROM ${ref}${previewWhere}${orderSql.toUpperCase()} LIMIT ${limit} OFFSET ${offset}`,
   };
+}
+
+// Comparison operators usable directly in SQL. Text-search and null operators
+// are handled specially below.
+const COMPARE_OPS: Record<string, string> = {
+  "=": "=", "!=": "<>", ">": ">", ">=": ">=", "<": "<", "<=": "<=",
+};
+
+// Turn structured filters into parameterized SQL clauses. Only columns that
+// exist in the table and known operators produce a clause; anything else is
+// silently dropped (the renderer only ever sends valid ones).
+function compileFilters(
+  filters: ColumnFilter[],
+  valid: Set<string>
+): { clauses: string[]; params: Cell[] } {
+  const clauses: string[] = [];
+  const params: Cell[] = [];
+  for (const f of filters) {
+    if (!valid.has(f.column)) continue;
+    const col = quoteIdent(f.column);
+    if (f.op === "isnull") {
+      clauses.push(`${col} is null`);
+    } else if (f.op === "notnull") {
+      clauses.push(`${col} is not null`);
+    } else if (f.op === "contains" || f.op === "starts" || f.op === "ends") {
+      const v = f.value ?? "";
+      const pattern =
+        f.op === "contains" ? `%${v}%` : f.op === "starts" ? `${v}%` : `%${v}`;
+      params.push(pattern);
+      clauses.push(`${col}::text ilike $${params.length}`);
+    } else if (COMPARE_OPS[f.op]) {
+      params.push(f.value ?? null);
+      clauses.push(`${col} ${COMPARE_OPS[f.op]} $${params.length}`);
+    }
+  }
+  return { clauses, params };
+}
+
+// Same clauses as compileFilters, but with literal values inlined for display
+// in the read-only SQL preview.
+function previewFilters(filters: ColumnFilter[], valid: Set<string>): string[] {
+  const out: string[] = [];
+  for (const f of filters) {
+    if (!valid.has(f.column)) continue;
+    const col = quoteIdent(f.column);
+    if (f.op === "isnull") out.push(`${col} IS NULL`);
+    else if (f.op === "notnull") out.push(`${col} IS NOT NULL`);
+    else if (f.op === "contains") out.push(`${col}::text ILIKE ${literal("%" + (f.value ?? "") + "%")}`);
+    else if (f.op === "starts") out.push(`${col}::text ILIKE ${literal((f.value ?? "") + "%")}`);
+    else if (f.op === "ends") out.push(`${col}::text ILIKE ${literal("%" + (f.value ?? ""))}`);
+    else if (COMPARE_OPS[f.op]) out.push(`${col} ${COMPARE_OPS[f.op]} ${literal(f.value ?? null)}`);
+  }
+  return out;
 }
 
 function serializeCell(v: unknown): Cell {

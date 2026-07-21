@@ -8,6 +8,7 @@
 (function () {
   const $ = (id: string): HTMLElement => document.getElementById(id)!;
   const asInput = (id: string): HTMLInputElement => $(id) as HTMLInputElement;
+  const asSelect = (id: string): HTMLSelectElement => $(id) as HTMLSelectElement;
 
   interface DirtyEntry {
     rowKey: string;
@@ -27,6 +28,7 @@
     sortDir: "asc" | "desc";
     filter: string;
     where: string;
+    colFilters: Record<string, { op: FilterOp; value: string }>;
     dirty: Record<string, DirtyEntry>;
     offset: number;
     hasMore: boolean;
@@ -44,10 +46,27 @@
     sortDir: "asc",
     filter: "",
     where: "",
+    colFilters: {},
     dirty: {},
     offset: 0,
     hasMore: false,
   };
+
+  // Operators offered in the per-column filter popover, in display order.
+  const FILTER_OPS: { op: FilterOp; label: string; noValue?: boolean }[] = [
+    { op: "=", label: "equals" },
+    { op: "!=", label: "not equals" },
+    { op: ">", label: "greater than" },
+    { op: ">=", label: "greater or equal" },
+    { op: "<", label: "less than" },
+    { op: "<=", label: "less or equal" },
+    { op: "contains", label: "contains" },
+    { op: "starts", label: "starts with" },
+    { op: "ends", label: "ends with" },
+    { op: "isnull", label: "is null", noValue: true },
+    { op: "notnull", label: "is not null", noValue: true },
+  ];
+  const NO_VALUE_OPS = new Set<FilterOp>(["isnull", "notnull"]);
 
   // ---------- connect screen ----------
   async function initConnect(): Promise<void> {
@@ -119,8 +138,10 @@
     await window.api.disconnect();
     Object.assign(state, {
       tables: [], current: null, columns: [], pk: [], rows: [], dirty: {},
-      sortCol: null, sortDir: "asc", filter: "", where: "", offset: 0, hasMore: false,
+      sortCol: null, sortDir: "asc", filter: "", where: "", colFilters: {},
+      offset: 0, hasMore: false,
     });
+    closeFilterPop();
     $("app").hidden = true;
     $("disconnectBtn").hidden = true;
     $("titlebarConn").textContent = "";
@@ -131,6 +152,8 @@
   // ---------- sidebar ----------
   const treeIcon =
     '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="2" y="2.5" width="12" height="11" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M2 6h12M6.5 6v7.5" stroke="currentColor" stroke-width="1.2"/></svg>';
+  const funnelIcon =
+    '<svg width="11" height="11" viewBox="0 0 16 16" fill="none"><path d="M2 3h12l-4.6 5.6V13L6.6 14.5V8.6L2 3z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>';
 
   async function loadTables(): Promise<void> {
     const res = await window.api.listTables();
@@ -186,11 +209,13 @@
     state.sortDir = "asc";
     state.filter = "";
     state.where = "";
+    state.colFilters = {};
     state.dirty = {};
     state.offset = 0;
     asInput("filter").value = "";
     asInput("where").value = "";
     $("whereClear").hidden = true;
+    closeFilterPop();
     renderTree();
     await query();
   }
@@ -204,6 +229,11 @@
       orderBy: state.sortCol,
       dir: state.sortDir,
       where: state.where || null,
+      filters: Object.entries(state.colFilters).map(([column, f]) => ({
+        column,
+        op: f.op,
+        value: NO_VALUE_OPS.has(f.op) ? null : f.value,
+      })),
     });
     if (!res.ok) {
       toast(res.error, true);
@@ -261,6 +291,107 @@
     applyWhere();
   }
 
+  // ---------- per-column filter popover ----------
+  let popCol: string | null = null;
+
+  function initFilterPop(): void {
+    asSelect("fpOp").innerHTML = FILTER_OPS.map(
+      (o) => '<option value="' + o.op + '">' + o.label + "</option>"
+    ).join("");
+    asSelect("fpOp").addEventListener("change", syncPopValue);
+    $("fpApply").addEventListener("click", applyColFilter);
+    $("fpClear").addEventListener("click", clearColFilter);
+    asInput("fpVal").addEventListener("keydown", (e) => {
+      const key = (e as KeyboardEvent).key;
+      if (key === "Enter") applyColFilter();
+      else if (key === "Escape") closeFilterPop();
+    });
+    // Dismiss on outside click, Escape, or grid scroll (position would drift).
+    document.addEventListener("mousedown", (e) => {
+      if (!popCol) return;
+      const t = e.target as HTMLElement;
+      if (t.closest("#filterPop") || t.closest(".funnel")) return;
+      closeFilterPop();
+    });
+    document.addEventListener("keydown", (e) => {
+      if ((e as KeyboardEvent).key === "Escape" && popCol) closeFilterPop();
+    });
+    $("gridScroll").addEventListener("scroll", closeFilterPop);
+  }
+
+  function syncPopValue(): void {
+    const op = asSelect("fpOp").value as FilterOp;
+    asInput("fpVal").style.display = NO_VALUE_OPS.has(op) ? "none" : "";
+  }
+
+  function openFilterPop(col: string, anchor: HTMLElement): void {
+    popCol = col;
+    $("fpCol").textContent = col;
+    const cur = state.colFilters[col];
+    asSelect("fpOp").value = cur ? cur.op : "=";
+    asInput("fpVal").value = cur ? cur.value : "";
+    syncPopValue();
+
+    const pop = $("filterPop");
+    pop.hidden = false; // unhide before measuring width
+    const r = anchor.getBoundingClientRect();
+    let left = r.left;
+    if (left + pop.offsetWidth > window.innerWidth - 8) {
+      left = window.innerWidth - pop.offsetWidth - 8;
+    }
+    pop.style.left = Math.max(8, left) + "px";
+    pop.style.top = r.bottom + 4 + "px";
+
+    if (NO_VALUE_OPS.has(asSelect("fpOp").value as FilterOp)) {
+      asSelect("fpOp").focus();
+    } else {
+      asInput("fpVal").focus();
+      asInput("fpVal").select();
+    }
+  }
+
+  function closeFilterPop(): void {
+    popCol = null;
+    $("filterPop").hidden = true;
+  }
+
+  function applyColFilter(): void {
+    if (!popCol) return;
+    const col = popCol;
+    const op = asSelect("fpOp").value as FilterOp;
+    const raw = asInput("fpVal").value;
+    const noVal = NO_VALUE_OPS.has(op);
+    const willClear = !noVal && raw.trim() === "";
+    const cur = state.colFilters[col];
+
+    // No-op guard: nothing to do if the popover matches current state.
+    if (willClear && !cur) return closeFilterPop();
+    if (!willClear && cur && cur.op === op && (noVal || cur.value === raw)) {
+      return closeFilterPop();
+    }
+    if (Object.keys(state.dirty).length && !confirmDiscard()) return;
+
+    if (willClear) delete state.colFilters[col];
+    else state.colFilters[col] = { op, value: noVal ? "" : raw };
+    state.offset = 0; // predicate changed — back to the first page
+    state.dirty = {};
+    closeFilterPop();
+    query();
+  }
+
+  function clearColFilter(): void {
+    if (popCol && state.colFilters[popCol]) {
+      if (Object.keys(state.dirty).length && !confirmDiscard()) return;
+      delete state.colFilters[popCol];
+      state.offset = 0;
+      state.dirty = {};
+      closeFilterPop();
+      query();
+    } else {
+      closeFilterPop();
+    }
+  }
+
   function rowKeyOf(row: Record<string, Cell>): string {
     // Stable identity for a row across sorts/edits, from its primary key.
     return state.pk.map((c) => String(row[c])).join("");
@@ -289,15 +420,23 @@
     cols.forEach((c) => {
       const sorted = state.sortCol === c.name;
       const arrow = sorted ? (state.sortDir === "asc" ? "▲" : "▼") : "";
+      const filtered = !!state.colFilters[c.name];
       h +=
-        '<th class="' + (sorted ? "sorted" : "") + '" data-col="' + esc(c.name) + '">' +
+        '<th class="' + (sorted ? "sorted " : "") + (filtered ? "filtered" : "") + '" data-col="' + esc(c.name) + '">' +
         '<div class="th"><span>' + esc(c.name) + "</span>" +
         (c.isPk ? '<span class="pkbadge">PK</span>' : "") +
         '<span class="typ">' + esc(c.dataType) + "</span>" +
+        '<span class="funnel' + (filtered ? " on" : "") + '" data-fcol="' + esc(c.name) + '" title="Filter column">' + funnelIcon + "</span>" +
         '<span class="sort">' + arrow + "</span></div></th>";
     });
     h += "</tr>";
     $("thead").innerHTML = h;
+    $("thead").querySelectorAll<HTMLElement>(".funnel").forEach((f) => {
+      f.addEventListener("click", (e) => {
+        e.stopPropagation(); // don't trigger the header's sort
+        openFilterPop(f.dataset.fcol!, f);
+      });
+    });
     $("thead").querySelectorAll<HTMLElement>("th[data-col]").forEach((th) => {
       th.addEventListener("click", () => {
         const col = th.dataset.col!;
@@ -551,6 +690,7 @@
     else if (ev.key === "Escape") clearWhere();
   });
   $("whereClear").addEventListener("click", clearWhere);
+  initFilterPop();
 
   initConnect();
 })();

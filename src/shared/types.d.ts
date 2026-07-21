@@ -28,6 +28,19 @@ interface DbMeta {
   host: string | null;
 }
 
+/** Operators available for a structured per-column filter. */
+type FilterOp =
+  | "=" | "!=" | ">" | ">=" | "<" | "<="
+  | "contains" | "starts" | "ends"
+  | "isnull" | "notnull";
+
+/** One structured column filter: `<column> <op> <value>`, parameterized. */
+interface ColumnFilter {
+  column: string;
+  op: FilterOp;
+  value: string | null; // ignored for isnull / notnull
+}
+
 interface QueryOpts {
   limit?: number;
   offset?: number;
@@ -35,6 +48,8 @@ interface QueryOpts {
   dir?: "asc" | "desc";
   /** Raw SQL boolean expression appended as a WHERE clause (user-authored). */
   where?: string | null;
+  /** Structured per-column filters, ANDed together and with `where`. */
+  filters?: ColumnFilter[];
 }
 
 interface QueryResult {
