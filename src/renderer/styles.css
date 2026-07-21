@@ -36,6 +36,9 @@
 }
 
 * { box-sizing: border-box; }
+/* The `hidden` attribute must win over any element's own `display` rule
+   (.app, .connect, .pending, .pager, .filter-pop, .empty all set display). */
+[hidden] { display: none !important; }
 html, body { height: 100%; }
 body {
   margin: 0; background: var(--bg); color: var(--text);
