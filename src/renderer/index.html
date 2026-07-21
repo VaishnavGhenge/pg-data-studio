@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:;"
+    />
+    <title>PG Data Studio</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- draggable titlebar strip (macOS hiddenInset) -->
+    <div class="titlebar" id="titlebar">
+      <span class="titlebar-name">PG Data Studio</span>
+      <span class="titlebar-conn" id="titlebarConn"></span>
+      <button class="titlebar-btn no-drag" id="disconnectBtn" hidden>Disconnect</button>
+    </div>
+
+    <!-- connect screen -->
+    <div class="connect" id="connect">
+      <div class="connect-card">
+        <div class="connect-brand">
+          <svg width="26" height="26" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <ellipse cx="8" cy="3.5" rx="5.5" ry="2.2" stroke="currentColor" stroke-width="1.1"/>
+            <path d="M2.5 3.5v9c0 1.2 2.5 2.2 5.5 2.2s5.5-1 5.5-2.2v-9" stroke="currentColor" stroke-width="1.1"/>
+            <path d="M2.5 8c0 1.2 2.5 2.2 5.5 2.2s5.5-1 5.5-2.2" stroke="currentColor" stroke-width="1.1"/>
+          </svg>
+          <div>
+            <h1>PG Data Studio</h1>
+            <p>Connect to a Postgres database</p>
+          </div>
+        </div>
+
+        <label class="field-label" for="connStr">Connection string</label>
+        <input
+          class="field"
+          id="connStr"
+          type="text"
+          spellcheck="false"
+          autocomplete="off"
+          placeholder="postgres://user:password@localhost:5432/dbname"
+        />
+
+        <div class="recent" id="recent"></div>
+
+        <div class="connect-error" id="connectError" hidden></div>
+
+        <button class="btn primary block" id="connectBtn">Connect</button>
+        <p class="connect-note">
+          Stored locally in plaintext for convenience — same as a <code>.env</code> on your machine.
+        </p>
+      </div>
+    </div>
+
+    <!-- main workspace -->
+    <div class="app" id="app" hidden>
+      <aside class="side">
+        <div class="side-head">
+          <span>Tables</span>
+          <button class="icon-btn" id="refreshBtn" title="Refresh tables" aria-label="Refresh tables">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2v3h-3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+        <div class="tree" id="tree"></div>
+      </aside>
+
+      <section class="main">
+        <div class="toolbar">
+          <div class="sql" id="sql"></div>
+          <input class="filter" id="filter" placeholder="filter loaded rows…" aria-label="filter rows" />
+          <div class="meta"><b id="rowcount">0</b> rows · <b id="ms">0</b> ms</div>
+        </div>
+
+        <div class="grid-scroll" id="gridScroll">
+          <table id="grid">
+            <thead id="thead"></thead>
+            <tbody id="tbody"></tbody>
+          </table>
+          <div class="empty" id="empty">Select a table to view its data.</div>
+        </div>
+
+        <div class="pending" id="pending">
+          <div class="pending-head">
+            <span class="badge" id="pcount">0 changes</span>
+            <span class="lbl" id="pendingLbl"></span>
+            <span class="spacer"></span>
+            <button class="btn ghost" id="revert">Revert</button>
+            <button class="btn primary" id="save">Save changes</button>
+          </div>
+          <div class="stmts" id="stmts"></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
