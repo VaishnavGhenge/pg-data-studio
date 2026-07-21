@@ -33,6 +33,8 @@ interface QueryOpts {
   offset?: number;
   orderBy?: string | null;
   dir?: "asc" | "desc";
+  /** Raw SQL boolean expression appended as a WHERE clause (user-authored). */
+  where?: string | null;
 }
 
 interface QueryResult {

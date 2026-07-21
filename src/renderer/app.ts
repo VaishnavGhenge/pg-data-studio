@@ -26,6 +26,7 @@
     sortCol: string | null;
     sortDir: "asc" | "desc";
     filter: string;
+    where: string;
     dirty: Record<string, DirtyEntry>;
     offset: number;
     hasMore: boolean;
@@ -42,6 +43,7 @@
     sortCol: null,
     sortDir: "asc",
     filter: "",
+    where: "",
     dirty: {},
     offset: 0,
     hasMore: false,
@@ -117,7 +119,7 @@
     await window.api.disconnect();
     Object.assign(state, {
       tables: [], current: null, columns: [], pk: [], rows: [], dirty: {},
-      sortCol: null, sortDir: "asc", filter: "", offset: 0, hasMore: false,
+      sortCol: null, sortDir: "asc", filter: "", where: "", offset: 0, hasMore: false,
     });
     $("app").hidden = true;
     $("disconnectBtn").hidden = true;
@@ -183,9 +185,12 @@
     state.sortCol = null;
     state.sortDir = "asc";
     state.filter = "";
+    state.where = "";
     state.dirty = {};
     state.offset = 0;
     asInput("filter").value = "";
+    asInput("where").value = "";
+    $("whereClear").hidden = true;
     renderTree();
     await query();
   }
@@ -198,6 +203,7 @@
       offset: state.offset,
       orderBy: state.sortCol,
       dir: state.sortDir,
+      where: state.where || null,
     });
     if (!res.ok) {
       toast(res.error, true);
@@ -234,6 +240,25 @@
     state.offset = next;
     state.dirty = {};
     await query();
+  }
+
+  // ---------- server-side WHERE filter ----------
+  async function applyWhere(): Promise<void> {
+    const next = asInput("where").value.trim();
+    if (next === state.where) return;
+    if (Object.keys(state.dirty).length && !confirmDiscard()) return;
+    state.where = next;
+    state.offset = 0; // a new predicate changes the result set; start at page 1
+    state.dirty = {};
+    $("whereClear").hidden = next === "";
+    $("where").classList.toggle("active", next !== "");
+    await query();
+  }
+
+  function clearWhere(): void {
+    asInput("where").value = "";
+    $("where").classList.remove("active");
+    applyWhere();
   }
 
   function rowKeyOf(row: Record<string, Cell>): string {
@@ -520,6 +545,12 @@
   $("revert").addEventListener("click", revertAll);
   $("prevPage").addEventListener("click", () => goToPage(-1));
   $("nextPage").addEventListener("click", () => goToPage(1));
+  asInput("where").addEventListener("keydown", (e) => {
+    const ev = e as KeyboardEvent;
+    if (ev.key === "Enter") applyWhere();
+    else if (ev.key === "Escape") clearWhere();
+  });
+  $("whereClear").addEventListener("click", clearWhere);
 
   initConnect();
 })();

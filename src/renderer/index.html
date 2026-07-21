@@ -81,6 +81,19 @@
           <div class="meta"><b id="rowcount">0</b> rows · <b id="ms">0</b> ms</div>
         </div>
 
+        <div class="wherebar" id="wherebar">
+          <span class="wherebar-kw">WHERE</span>
+          <input
+            class="wherebar-input"
+            id="where"
+            spellcheck="false"
+            autocomplete="off"
+            placeholder="price &gt; 100 AND code LIKE 'I%'   —   raw SQL, press Enter to apply"
+            aria-label="WHERE clause"
+          />
+          <button class="wherebar-clear" id="whereClear" title="Clear filter" aria-label="Clear filter" hidden>×</button>
+        </div>
+
         <div class="grid-scroll" id="gridScroll">
           <table id="grid">
             <thead id="thead"></thead>

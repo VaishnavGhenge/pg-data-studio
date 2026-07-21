@@ -137,8 +137,14 @@ export async function runQuery(
     orderSql = ` order by ${quoteIdent(opts.orderBy)} ${dir}`;
   }
 
+  // Free-form WHERE: user-authored SQL against their own database (same trust
+  // model as the app's other editing). Can't be parameterized, so a bad
+  // expression surfaces as a Postgres error the UI shows verbatim.
+  const where = typeof opts.where === "string" ? opts.where.trim() : "";
+  const whereSql = where ? ` where ${where}` : "";
+
   const ref = `${quoteIdent(schema)}.${quoteIdent(table)}`;
-  const sql = `select * from ${ref}${orderSql} limit $1 offset $2`;
+  const sql = `select * from ${ref}${whereSql}${orderSql} limit $1 offset $2`;
 
   // Fetch one extra row past the page: if it comes back, there's a next page.
   // This gives Prev/Next paging without an expensive COUNT(*) on large tables.
@@ -168,7 +174,7 @@ export async function runQuery(
     offset,
     hasMore,
     ms: Math.round(ms * 10) / 10,
-    previewSql: `SELECT * FROM ${ref}${orderSql.toUpperCase()} LIMIT ${limit} OFFSET ${offset}`,
+    previewSql: `SELECT * FROM ${ref}${where ? ` WHERE ${where}` : ""}${orderSql.toUpperCase()} LIMIT ${limit} OFFSET ${offset}`,
   };
 }
 
