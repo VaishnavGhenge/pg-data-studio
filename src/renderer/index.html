@@ -69,6 +69,15 @@
         <div class="toolbar">
           <div class="sql" id="sql"></div>
           <input class="filter" id="filter" placeholder="filter loaded rows…" aria-label="filter rows" />
+          <div class="pager" id="pager" hidden>
+            <button class="pager-btn" id="prevPage" title="Previous page" aria-label="Previous page" disabled>
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M10 3 5 8l5 5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <span class="pager-range" id="pageRange">1–0</span>
+            <button class="pager-btn" id="nextPage" title="Next page" aria-label="Next page" disabled>
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
           <div class="meta"><b id="rowcount">0</b> rows · <b id="ms">0</b> ms</div>
         </div>
 

@@ -140,14 +140,19 @@ export async function runQuery(
   const ref = `${quoteIdent(schema)}.${quoteIdent(table)}`;
   const sql = `select * from ${ref}${orderSql} limit $1 offset $2`;
 
+  // Fetch one extra row past the page: if it comes back, there's a next page.
+  // This gives Prev/Next paging without an expensive COUNT(*) on large tables.
   const started = process.hrtime.bigint();
-  const r = await p.query({ text: sql, values: [limit, offset], rowMode: "array" });
+  const r = await p.query({ text: sql, values: [limit + 1, offset], rowMode: "array" });
   const ms = Number(process.hrtime.bigint() - started) / 1e6;
+
+  const hasMore = r.rows.length > limit;
+  const pageArrs = (r.rows as unknown[][]).slice(0, limit);
 
   // Return rows as objects keyed by column name, with every cell serialized to a
   // string or null so the sandboxed renderer never reasons about pg's JS types.
   const colNames = r.fields.map((f) => f.name);
-  const rows = (r.rows as unknown[][]).map((arr) => {
+  const rows = pageArrs.map((arr) => {
     const obj: Record<string, Cell> = {};
     colNames.forEach((name, i) => {
       obj[name] = serializeCell(arr[i]);
@@ -159,7 +164,9 @@ export async function runQuery(
     columns,
     pk,
     rows,
-    rowCount: r.rowCount ?? rows.length,
+    rowCount: rows.length,
+    offset,
+    hasMore,
     ms: Math.round(ms * 10) / 10,
     previewSql: `SELECT * FROM ${ref}${orderSql.toUpperCase()} LIMIT ${limit} OFFSET ${offset}`,
   };

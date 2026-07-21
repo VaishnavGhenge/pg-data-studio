@@ -27,7 +27,11 @@
     sortDir: "asc" | "desc";
     filter: string;
     dirty: Record<string, DirtyEntry>;
+    offset: number;
+    hasMore: boolean;
   }
+
+  const PAGE_SIZE = 200;
 
   const state: State = {
     tables: [],
@@ -39,6 +43,8 @@
     sortDir: "asc",
     filter: "",
     dirty: {},
+    offset: 0,
+    hasMore: false,
   };
 
   // ---------- connect screen ----------
@@ -111,7 +117,7 @@
     await window.api.disconnect();
     Object.assign(state, {
       tables: [], current: null, columns: [], pk: [], rows: [], dirty: {},
-      sortCol: null, sortDir: "asc", filter: "",
+      sortCol: null, sortDir: "asc", filter: "", offset: 0, hasMore: false,
     });
     $("app").hidden = true;
     $("disconnectBtn").hidden = true;
@@ -178,6 +184,7 @@
     state.sortDir = "asc";
     state.filter = "";
     state.dirty = {};
+    state.offset = 0;
     asInput("filter").value = "";
     renderTree();
     await query();
@@ -187,7 +194,8 @@
     if (!state.current) return;
     const { schema, name } = state.current;
     const res = await window.api.query(schema, name, {
-      limit: 200,
+      limit: PAGE_SIZE,
+      offset: state.offset,
       orderBy: state.sortCol,
       dir: state.sortDir,
     });
@@ -198,9 +206,34 @@
     state.columns = res.data.columns;
     state.pk = res.data.pk;
     state.rows = res.data.rows;
+    state.offset = res.data.offset;
+    state.hasMore = res.data.hasMore;
     $("sql").textContent = res.data.previewSql;
     $("ms").textContent = String(res.data.ms);
     renderGrid();
+    renderPager();
+  }
+
+  // ---------- pagination ----------
+  function renderPager(): void {
+    const pager = $("pager");
+    const loaded = state.rows.length;
+    // Show the pager once there's more than one page's worth of data to move through.
+    pager.hidden = state.offset === 0 && !state.hasMore;
+    const from = loaded ? state.offset + 1 : 0;
+    const to = state.offset + loaded;
+    $("pageRange").textContent = from + "–" + to;
+    ($("prevPage") as HTMLButtonElement).disabled = state.offset === 0;
+    ($("nextPage") as HTMLButtonElement).disabled = !state.hasMore;
+  }
+
+  async function goToPage(delta: number): Promise<void> {
+    const next = Math.max(state.offset + delta * PAGE_SIZE, 0);
+    if (next === state.offset) return;
+    if (Object.keys(state.dirty).length && !confirmDiscard()) return;
+    state.offset = next;
+    state.dirty = {};
+    await query();
   }
 
   function rowKeyOf(row: Record<string, Cell>): string {
@@ -243,12 +276,15 @@
     $("thead").querySelectorAll<HTMLElement>("th[data-col]").forEach((th) => {
       th.addEventListener("click", () => {
         const col = th.dataset.col!;
+        if (Object.keys(state.dirty).length && !confirmDiscard()) return;
         if (state.sortCol === col) {
           state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
         } else {
           state.sortCol = col;
           state.sortDir = "asc";
         }
+        state.offset = 0; // re-sort reorders everything; start from the first page
+        state.dirty = {};
         query(); // server-side sort keeps LIMIT correct
       });
     });
@@ -261,7 +297,7 @@
       const rk = rowKeyOf(row);
       const rowDirty = cols.some((c) => state.dirty[rk + "" + c.name]);
       b += '<tr class="' + (rowDirty ? "dirty-row" : "") + '">';
-      b += '<td class="gutter">' + (idx + 1) + "</td>";
+      b += '<td class="gutter">' + (state.offset + idx + 1) + "</td>";
       cols.forEach((c) => {
         const key = rk + "" + c.name;
         const d = state.dirty[key];
@@ -482,6 +518,8 @@
   });
   $("save").addEventListener("click", save);
   $("revert").addEventListener("click", revertAll);
+  $("prevPage").addEventListener("click", () => goToPage(-1));
+  $("nextPage").addEventListener("click", () => goToPage(1));
 
   initConnect();
 })();

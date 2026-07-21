@@ -40,6 +40,10 @@ interface QueryResult {
   pk: string[];
   rows: Record<string, Cell>[];
   rowCount: number;
+  /** Zero-based offset of the first returned row — the current page's start. */
+  offset: number;
+  /** True when at least one more row exists past this page. */
+  hasMore: boolean;
   ms: number;
   previewSql: string;
 }
