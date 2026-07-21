@@ -68,62 +68,210 @@
   ];
   const NO_VALUE_OPS = new Set<FilterOp>(["isnull", "notnull"]);
 
-  // ---------- connect screen ----------
+  // ---------- connect screen: data sources + form ----------
+  const dbIcon =
+    '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><ellipse cx="8" cy="4" rx="5" ry="2" stroke="currentColor" stroke-width="1.1"/><path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2" stroke="currentColor" stroke-width="1.1"/></svg>';
+
+  let sources: Source[] = [];
+  let selectedId: string | null = null;
+
   async function initConnect(): Promise<void> {
-    const recent = await safe(window.api.recentConnections(), [] as string[]);
-    renderRecent(recent);
-    const input = asInput("connStr");
-    if (recent[0]) input.value = recent[0];
-    input.focus();
-    input.select();
+    sources = await safe(window.api.listSources(), []);
+    renderSources();
+    if (sources[0]) selectSource(sources[0]);
+    else newSource();
   }
 
-  function renderRecent(list: string[]): void {
-    const box = $("recent");
-    box.innerHTML = "";
-    list.forEach((cs) => {
+  function renderSources(): void {
+    const list = $("sourcesList");
+    list.innerHTML = "";
+    if (!sources.length) {
+      const empty = document.createElement("div");
+      empty.className = "sources-empty";
+      empty.textContent = "No sources yet — fill in the form to add one.";
+      list.appendChild(empty);
+      return;
+    }
+    sources.forEach((s) => {
       const item = document.createElement("div");
-      item.className = "recent-item";
+      item.className = "source-item" + (s.id === selectedId ? " active" : "");
       item.innerHTML =
-        '<span class="nm">' + redact(cs) + "</span>" +
-        '<span class="rx" title="Forget">×</span>';
-      item.querySelector<HTMLElement>(".nm")!.addEventListener("click", () => {
-        asInput("connStr").value = cs;
-        doConnect();
-      });
-      item.querySelector<HTMLElement>(".rx")!.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        await window.api.forgetConnection(cs);
-        renderRecent(await safe(window.api.recentConnections(), [] as string[]));
-      });
-      box.appendChild(item);
+        dbIcon +
+        '<span class="s-body"><span class="s-nm">' + esc(s.name) + "</span>" +
+        '<span class="s-sub">' + esc(s.host + ":" + s.port + "/" + s.database) + "</span></span>";
+      item.addEventListener("click", () => selectSource(s));
+      list.appendChild(item);
     });
   }
 
-  // Hide the password when showing a stored connection string.
-  function redact(cs: string): string {
-    return cs.replace(/:\/\/([^:@/]+):([^@/]+)@/, "://$1:•••@");
+  function selectSource(s: Source): void {
+    selectedId = s.id;
+    renderSources();
+    fillForm(s);
+  }
+
+  function newSource(): void {
+    selectedId = null;
+    renderSources();
+    fillForm(null);
+    asInput("srcName").focus();
+  }
+
+  // ---- form <-> model ----
+  function fillForm(s: Source | null): void {
+    asInput("srcName").value = s?.name ?? "";
+    asInput("srcHost").value = s?.host ?? "localhost";
+    asInput("srcPort").value = String(s?.port ?? 5432);
+    asInput("srcUser").value = s?.user ?? "postgres";
+    asInput("srcPassword").value = s?.password ?? "";
+    asInput("srcDatabase").value = s?.database ?? "";
+    asInput("srcSsl").checked = s?.ssl ?? false;
+    syncUrlFromForm();
+    showFormError("");
+    $("testResult").textContent = "";
+    $("deleteSource").hidden = !s;
+  }
+
+  function readForm(): Source {
+    return {
+      id: selectedId ?? "",
+      name: asInput("srcName").value.trim(),
+      host: asInput("srcHost").value.trim(),
+      port: Number(asInput("srcPort").value) || 5432,
+      database: asInput("srcDatabase").value.trim(),
+      user: asInput("srcUser").value.trim(),
+      password: asInput("srcPassword").value,
+      ssl: asInput("srcSsl").checked,
+    };
+  }
+
+  function defaultName(s: Source): string {
+    return `${s.database || "postgres"} @ ${s.host || "localhost"}`;
+  }
+
+  function validate(s: Source): string | null {
+    if (!s.host) return "Host is required.";
+    if (!s.database) return "Database is required.";
+    if (!s.user) return "User is required.";
+    return null;
+  }
+
+  function buildUrl(s: Source): string {
+    const cred = s.user
+      ? encodeURIComponent(s.user) +
+        (s.password ? ":" + encodeURIComponent(s.password) : "") + "@"
+      : "";
+    const port = s.port ? ":" + s.port : "";
+    const q = s.ssl ? "?sslmode=require" : "";
+    return `postgres://${cred}${s.host}${port}/${encodeURIComponent(s.database)}${q}`;
+  }
+
+  function syncUrlFromForm(): void {
+    asInput("srcUrl").value = buildUrl(readForm());
+  }
+
+  // Parse the URL field back into the structured fields. Programmatic value
+  // assignment doesn't fire "input", so this can't loop with syncUrlFromForm.
+  function parseUrlToForm(): void {
+    const raw = asInput("srcUrl").value.trim();
+    if (!raw) return;
+    try {
+      const u = new URL(raw);
+      if (!/^postgres(ql)?:$/.test(u.protocol)) return;
+      if (u.hostname) asInput("srcHost").value = decodeURIComponent(u.hostname);
+      asInput("srcPort").value = u.port || "5432";
+      const db = decodeURIComponent(u.pathname.replace(/^\//, ""));
+      if (db) asInput("srcDatabase").value = db;
+      if (u.username) asInput("srcUser").value = decodeURIComponent(u.username);
+      if (u.password) asInput("srcPassword").value = decodeURIComponent(u.password);
+      const sslmode = u.searchParams.get("sslmode");
+      if (sslmode) asInput("srcSsl").checked = sslmode !== "disable";
+      syncUrlFromForm(); // normalize
+    } catch {
+      /* invalid URL — leave the fields untouched */
+    }
+  }
+
+  function showFormError(msg: string): void {
+    const err = $("connectError");
+    err.textContent = msg;
+    err.hidden = !msg;
+  }
+
+  function setBusy(btn: HTMLButtonElement, label: string, busy: boolean): void {
+    btn.disabled = busy;
+    btn.textContent = label;
+  }
+
+  // ---- actions ----
+  async function persist(s: Source): Promise<Source | null> {
+    const res = await window.api.saveSource(s);
+    if (!res.ok) {
+      showFormError(res.error);
+      return null;
+    }
+    selectedId = res.data.id;
+    sources = await safe(window.api.listSources(), sources);
+    renderSources();
+    return res.data;
   }
 
   async function doConnect(): Promise<void> {
-    const cs = asInput("connStr").value.trim();
-    const err = $("connectError");
+    const s = readForm();
+    const err = validate(s);
+    if (err) return showFormError(err);
+    if (!s.name) s.name = defaultName(s);
+    showFormError("");
     const btn = $("connectBtn") as HTMLButtonElement;
-    if (!cs) return;
-    err.hidden = true;
-    btn.disabled = true;
-    btn.textContent = "Connecting…";
+    setBusy(btn, "Connecting…", true);
+    await persist(s); // remember what we're connecting to, even if it fails
+    const res = await window.api.connect(s);
+    setBusy(btn, "Connect", false);
+    if (!res.ok) return showFormError(res.error);
+    enterWorkspace(res.data);
+  }
 
-    const res = await window.api.connect(cs);
-    btn.disabled = false;
-    btn.textContent = "Connect";
+  async function doSave(): Promise<void> {
+    const s = readForm();
+    const err = validate(s);
+    if (err) return showFormError(err);
+    if (!s.name) s.name = defaultName(s);
+    const saved = await persist(s);
+    if (saved) {
+      fillForm(saved);
+      toast("✓ Saved");
+    }
+  }
 
+  async function doTest(): Promise<void> {
+    const s = readForm();
+    const err = validate(s);
+    if (err) return showFormError(err);
+    showFormError("");
+    const btn = $("testSource") as HTMLButtonElement;
+    const out = $("testResult");
+    out.className = "test-result";
+    out.textContent = "Testing…";
+    setBusy(btn, "Testing…", true);
+    const res = await window.api.testConnection(s);
+    setBusy(btn, "Test", false);
     if (!res.ok) {
-      err.textContent = res.error;
-      err.hidden = false;
+      out.classList.add("err");
+      out.textContent = "✕ " + res.error;
       return;
     }
-    enterWorkspace(res.data);
+    out.classList.add("ok");
+    out.textContent = "✓ " + (res.data.serverVersion ?? "connected");
+  }
+
+  async function doDelete(): Promise<void> {
+    if (!selectedId) return newSource();
+    const cur = sources.find((s) => s.id === selectedId);
+    if (cur && !window.confirm(`Delete source "${cur.name}"?`)) return;
+    await window.api.deleteSource(selectedId);
+    sources = await safe(window.api.listSources(), []);
+    if (sources[0]) selectSource(sources[0]);
+    else newSource();
   }
 
   function enterWorkspace(meta: DbMeta): void {
@@ -671,8 +819,24 @@
 
   // ---------- wire up ----------
   $("connectBtn").addEventListener("click", doConnect);
-  asInput("connStr").addEventListener("keydown", (e) => {
-    if ((e as KeyboardEvent).key === "Enter") doConnect();
+  $("saveSource").addEventListener("click", doSave);
+  $("testSource").addEventListener("click", doTest);
+  $("deleteSource").addEventListener("click", doDelete);
+  $("newSource").addEventListener("click", newSource);
+  $("removeSource").addEventListener("click", doDelete);
+  // Structured fields keep the URL field in sync; Enter connects.
+  ["srcName", "srcHost", "srcPort", "srcUser", "srcPassword", "srcDatabase"].forEach((id) => {
+    const el = asInput(id);
+    if (id !== "srcName") el.addEventListener("input", syncUrlFromForm);
+    el.addEventListener("keydown", (e) => {
+      if ((e as KeyboardEvent).key === "Enter") doConnect();
+    });
+  });
+  asInput("srcSsl").addEventListener("change", syncUrlFromForm);
+  // The URL field parses back into the structured fields on edit.
+  asInput("srcUrl").addEventListener("change", parseUrlToForm);
+  asInput("srcUrl").addEventListener("keydown", (e) => {
+    if ((e as KeyboardEvent).key === "Enter") { parseUrlToForm(); doConnect(); }
   });
   $("disconnectBtn").addEventListener("click", doDisconnect);
   $("refreshBtn").addEventListener("click", loadTables);

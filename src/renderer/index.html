@@ -17,40 +17,85 @@
       <button class="titlebar-btn no-drag" id="disconnectBtn" hidden>Disconnect</button>
     </div>
 
-    <!-- connect screen -->
+    <!-- connect screen: data-sources list (left) + connection form (right) -->
     <div class="connect" id="connect">
-      <div class="connect-card">
+      <aside class="sources">
+        <div class="sources-head">
+          <span>Data Sources</span>
+          <div class="sources-tools">
+            <button class="icon-btn" id="newSource" title="New source" aria-label="New source">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            </button>
+            <button class="icon-btn" id="removeSource" title="Remove source" aria-label="Remove source">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="sources-list" id="sourcesList"></div>
+      </aside>
+
+      <section class="source-form">
         <div class="connect-brand">
-          <svg width="26" height="26" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <ellipse cx="8" cy="3.5" rx="5.5" ry="2.2" stroke="currentColor" stroke-width="1.1"/>
             <path d="M2.5 3.5v9c0 1.2 2.5 2.2 5.5 2.2s5.5-1 5.5-2.2v-9" stroke="currentColor" stroke-width="1.1"/>
             <path d="M2.5 8c0 1.2 2.5 2.2 5.5 2.2s5.5-1 5.5-2.2" stroke="currentColor" stroke-width="1.1"/>
           </svg>
           <div>
             <h1>PG Data Studio</h1>
-            <p>Connect to a Postgres database</p>
+            <p>Configure a Postgres connection</p>
           </div>
         </div>
 
-        <label class="field-label" for="connStr">Connection string</label>
-        <input
-          class="field"
-          id="connStr"
-          type="text"
-          spellcheck="false"
-          autocomplete="off"
-          placeholder="postgres://user:password@localhost:5432/dbname"
-        />
+        <div class="form-grid">
+          <label class="field-label" for="srcName">Name</label>
+          <input class="field" id="srcName" spellcheck="false" autocomplete="off" placeholder="My database" />
 
-        <div class="recent" id="recent"></div>
+          <div class="form-row">
+            <div class="form-col grow">
+              <label class="field-label" for="srcHost">Host</label>
+              <input class="field" id="srcHost" spellcheck="false" autocomplete="off" placeholder="localhost" />
+            </div>
+            <div class="form-col port">
+              <label class="field-label" for="srcPort">Port</label>
+              <input class="field" id="srcPort" type="number" inputmode="numeric" placeholder="5432" />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-col grow">
+              <label class="field-label" for="srcUser">User</label>
+              <input class="field" id="srcUser" spellcheck="false" autocomplete="off" placeholder="postgres" />
+            </div>
+            <div class="form-col grow">
+              <label class="field-label" for="srcPassword">Password</label>
+              <input class="field" id="srcPassword" type="password" autocomplete="off" placeholder="••••••••" />
+            </div>
+          </div>
+
+          <label class="field-label" for="srcDatabase">Database</label>
+          <input class="field" id="srcDatabase" spellcheck="false" autocomplete="off" placeholder="postgres" />
+
+          <label class="checkbox-row"><input type="checkbox" id="srcSsl" /> <span>Use SSL</span></label>
+
+          <label class="field-label" for="srcUrl">URL <span class="hint">— edit to fill the fields above</span></label>
+          <input class="field url" id="srcUrl" spellcheck="false" autocomplete="off" placeholder="postgres://user:password@localhost:5432/dbname" />
+        </div>
 
         <div class="connect-error" id="connectError" hidden></div>
 
-        <button class="btn primary block" id="connectBtn">Connect</button>
+        <div class="form-actions">
+          <button class="btn ghost danger" id="deleteSource" hidden>Delete</button>
+          <span class="test-result" id="testResult"></span>
+          <span class="spacer"></span>
+          <button class="btn ghost" id="testSource">Test</button>
+          <button class="btn ghost" id="saveSource">Save</button>
+          <button class="btn primary" id="connectBtn">Connect</button>
+        </div>
         <p class="connect-note">
-          Stored locally in plaintext for convenience — same as a <code>.env</code> on your machine.
+          Saved locally in plaintext for convenience — same as a <code>.env</code> on your machine.
         </p>
-      </div>
+      </section>
     </div>
 
     <!-- main workspace -->

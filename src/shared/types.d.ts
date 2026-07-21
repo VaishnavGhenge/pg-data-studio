@@ -28,6 +28,22 @@ interface DbMeta {
   host: string | null;
 }
 
+/** The Postgres connection fields needed to open a pool. */
+interface ConnectConfig {
+  host: string;
+  port: number;
+  database: string;
+  user: string;
+  password: string;
+  ssl: boolean;
+}
+
+/** A saved data source: a named ConnectConfig with a stable id. */
+interface Source extends ConnectConfig {
+  id: string;
+  name: string;
+}
+
 /** Operators available for a structured per-column filter. */
 type FilterOp =
   | "=" | "!=" | ">" | ">=" | "<" | "<="
@@ -88,7 +104,8 @@ type IpcResult<T> = IpcOk<T> | IpcErr;
 
 /** The entire surface the renderer can reach (exposed via preload). */
 interface Api {
-  connect(connectionString: string): Promise<IpcResult<DbMeta>>;
+  connect(cfg: ConnectConfig): Promise<IpcResult<DbMeta>>;
+  testConnection(cfg: ConnectConfig): Promise<IpcResult<DbMeta>>;
   disconnect(): Promise<IpcResult<boolean>>;
   status(): Promise<IpcResult<DbStatus>>;
   listTables(): Promise<IpcResult<TableInfo[]>>;
@@ -98,8 +115,9 @@ interface Api {
     table: string,
     changes: RowChange[]
   ): Promise<IpcResult<ApplyResult>>;
-  recentConnections(): Promise<IpcResult<string[]>>;
-  forgetConnection(connectionString: string): Promise<IpcResult<boolean>>;
+  listSources(): Promise<IpcResult<Source[]>>;
+  saveSource(source: Source): Promise<IpcResult<Source>>;
+  deleteSource(id: string): Promise<IpcResult<boolean>>;
 }
 
 interface Window {

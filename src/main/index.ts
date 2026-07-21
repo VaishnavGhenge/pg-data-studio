@@ -54,11 +54,9 @@ function handle<T>(
   });
 }
 
-handle<DbMeta>("db:connect", async (connectionString: string) => {
-  const meta = await db.connect(connectionString);
-  store.remember(connectionString);
-  return meta;
-});
+handle<DbMeta>("db:connect", async (cfg: ConnectConfig) => db.connect(cfg));
+
+handle<DbMeta>("db:test", async (cfg: ConnectConfig) => db.testConnect(cfg));
 
 handle<boolean>("db:disconnect", async () => {
   await db.disconnect();
@@ -82,9 +80,10 @@ handle<ApplyResult>(
     db.applyChanges(schema, table, changes)
 );
 
-handle<string[]>("store:recent", async () => store.getRecent());
-handle<boolean>("store:forget", async (connectionString: string) => {
-  store.forget(connectionString);
+handle<Source[]>("store:list", async () => store.listSources());
+handle<Source>("store:save", async (source: Source) => store.saveSource(source));
+handle<boolean>("store:delete", async (id: string) => {
+  store.deleteSource(id);
   return true;
 });
 

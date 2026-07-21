@@ -17,23 +17,29 @@ function requirePool(): Pool {
   return pool;
 }
 
-export async function connect(connectionString: string): Promise<DbMeta> {
-  await disconnect();
-  const p = new Pool({
-    connectionString,
-    max: 5,
+function poolConfig(cfg: ConnectConfig, max: number) {
+  return {
+    host: cfg.host,
+    port: Number(cfg.port) || 5432,
+    database: cfg.database,
+    user: cfg.user,
+    password: cfg.password,
+    ssl: cfg.ssl ? { rejectUnauthorized: false } : undefined,
+    max,
     connectionTimeoutMillis: 8000,
     idleTimeoutMillis: 30000,
-  });
+  };
+}
 
-  // Validate the connection eagerly so the UI gets a real error, not a
-  // pool that fails on first query.
+// Open a client, read server metadata, release it. The eager query means the
+// caller gets a real connection error rather than a pool that fails later.
+async function probe(p: Pool): Promise<DbMeta> {
   const client = await p.connect();
   try {
     const r = await client.query(
       "select current_database() as db, version() as v, inet_server_addr()::text as host"
     );
-    meta = {
+    return {
       database: r.rows[0].db,
       serverVersion: String(r.rows[0].v).split(" ").slice(0, 2).join(" "),
       host: r.rows[0].host || "local",
@@ -41,8 +47,30 @@ export async function connect(connectionString: string): Promise<DbMeta> {
   } finally {
     client.release();
   }
+}
+
+export async function connect(cfg: ConnectConfig): Promise<DbMeta> {
+  await disconnect();
+  const p = new Pool(poolConfig(cfg, 5));
+  try {
+    meta = await probe(p);
+  } catch (e) {
+    await p.end().catch(() => {}); // don't leak the pool on a failed connect
+    throw e;
+  }
   pool = p;
   return { ...meta };
+}
+
+// Validate a config without touching the active connection: spin up a throwaway
+// single-client pool, probe it, and tear it down.
+export async function testConnect(cfg: ConnectConfig): Promise<DbMeta> {
+  const p = new Pool(poolConfig(cfg, 1));
+  try {
+    return await probe(p);
+  } finally {
+    await p.end().catch(() => {});
+  }
 }
 
 export async function disconnect(): Promise<void> {
