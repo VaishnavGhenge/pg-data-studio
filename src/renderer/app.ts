@@ -20,6 +20,7 @@
 
   interface State {
     tables: TableInfo[];
+    tableFilter: string;
     current: { schema: string; name: string } | null;
     columns: Column[];
     pk: string[];
@@ -38,6 +39,7 @@
 
   const state: State = {
     tables: [],
+    tableFilter: "",
     current: null,
     columns: [],
     pk: [],
@@ -285,10 +287,11 @@
   async function doDisconnect(): Promise<void> {
     await window.api.disconnect();
     Object.assign(state, {
-      tables: [], current: null, columns: [], pk: [], rows: [], dirty: {},
+      tables: [], tableFilter: "", current: null, columns: [], pk: [], rows: [], dirty: {},
       sortCol: null, sortDir: "asc", filter: "", where: "", colFilters: {},
       offset: 0, hasMore: false,
     });
+    asInput("tableFilter").value = "";
     closeFilterPop();
     $("app").hidden = true;
     $("disconnectBtn").hidden = true;
@@ -318,28 +321,50 @@
 
   function renderTree(): void {
     const tree = $("tree");
-    tree.innerHTML = "";
-    const bySchema: Record<string, TableInfo[]> = {};
-    state.tables.forEach((t) => (bySchema[t.schema] = bySchema[t.schema] || []).push(t));
+    const q = state.tableFilter.toLowerCase();
+    const matches = q
+      ? state.tables.filter((t) => t.name.toLowerCase().includes(q))
+      : state.tables;
 
+    const bySchema: Record<string, TableInfo[]> = {};
+    matches.forEach((t) => (bySchema[t.schema] = bySchema[t.schema] || []).push(t));
+
+    // Build the whole tree as one HTML string (fast) with data-* for delegation.
+    // No per-row listeners: a single click handler on #tree dispatches (see wire-up).
+    let html = "";
     Object.keys(bySchema).forEach((schema) => {
-      const grp = document.createElement("div");
-      grp.className = "tgroup";
-      grp.textContent = schema;
-      tree.appendChild(grp);
+      html += '<div class="tgroup">' + esc(schema) + "</div>";
       bySchema[schema].forEach((t) => {
-        const active =
-          !!state.current && state.current.schema === t.schema && state.current.name === t.name;
-        const el = document.createElement("div");
-        el.className = "tbl" + (active ? " active" : "");
-        el.innerHTML =
+        const full = t.schema + "." + t.name;
+        html +=
+          '<div class="tbl" data-schema="' + esc(t.schema) + '" data-table="' + esc(t.name) +
+          '" title="' + esc(full) + '">' +
           treeIcon +
           '<span class="nm">' + esc(t.name) + "</span>" +
-          '<span class="rows">' + fmtCount(t.estRows) + "</span>";
-        el.addEventListener("click", () => selectTable(t));
-        tree.appendChild(el);
+          '<span class="rows">' + fmtCount(t.estRows) + "</span></div>";
       });
     });
+    if (!html) {
+      html = '<div class="tree-empty">' + (q ? "No matching tables" : "No tables") + "</div>";
+    }
+    tree.innerHTML = html;
+    highlightActiveTable();
+  }
+
+  // Move the .active marker to the current table without rebuilding the tree.
+  function highlightActiveTable(): void {
+    const tree = $("tree");
+    tree.querySelector(".tbl.active")?.classList.remove("active");
+    if (!state.current) return;
+    const sel =
+      '.tbl[data-schema="' + cssEsc(state.current.schema) +
+      '"][data-table="' + cssEsc(state.current.name) + '"]';
+    tree.querySelector(sel)?.classList.add("active");
+  }
+
+  // Escape a value for use inside a CSS attribute selector.
+  function cssEsc(s: string): string {
+    return s.replace(/["\\]/g, "\\$&");
   }
 
   function fmtCount(n: number): string {
@@ -364,7 +389,7 @@
     asInput("where").value = "";
     $("whereClear").hidden = true;
     closeFilterPop();
-    renderTree();
+    highlightActiveTable();
     await query();
   }
 
@@ -840,6 +865,19 @@
   });
   $("disconnectBtn").addEventListener("click", doDisconnect);
   $("refreshBtn").addEventListener("click", loadTables);
+  // One delegated handler for the whole table list (no per-row listeners).
+  $("tree").addEventListener("click", (e) => {
+    const el = (e.target as HTMLElement).closest<HTMLElement>(".tbl");
+    if (!el) return;
+    const t = state.tables.find(
+      (x) => x.schema === el.dataset.schema && x.name === el.dataset.table
+    );
+    if (t) selectTable(t);
+  });
+  asInput("tableFilter").addEventListener("input", (e) => {
+    state.tableFilter = (e.target as HTMLInputElement).value.trim();
+    renderTree();
+  });
   asInput("filter").addEventListener("input", (e) => {
     state.filter = (e.target as HTMLInputElement).value.trim();
     renderGrid();
