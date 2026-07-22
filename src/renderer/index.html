@@ -17,101 +17,27 @@
       <button class="titlebar-btn no-drag" id="disconnectBtn" hidden>Disconnect</button>
     </div>
 
-    <!-- connect screen: data-sources list (left) + connection form (right) -->
-    <div class="connect" id="connect">
-      <aside class="sources">
-        <div class="sources-head">
-          <span>Data Sources</span>
-          <div class="sources-tools">
-            <button class="icon-btn" id="newSource" title="New source" aria-label="New source">
+    <!-- main workspace: database navigator (left) + data grid (right) -->
+    <div class="app" id="app">
+      <aside class="side" id="side">
+        <div class="side-head">
+          <span>Databases</span>
+          <div class="side-tools">
+            <button class="icon-btn" id="newSource" title="New data source" aria-label="New data source">
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
             </button>
-            <button class="icon-btn" id="removeSource" title="Remove source" aria-label="Remove source">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            <button class="icon-btn" id="refreshBtn" title="Refresh" aria-label="Refresh">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2v3h-3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
           </div>
-        </div>
-        <div class="sources-list" id="sourcesList"></div>
-      </aside>
-
-      <section class="source-form">
-        <div class="connect-brand">
-          <svg width="24" height="24" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <ellipse cx="8" cy="3.5" rx="5.5" ry="2.2" stroke="currentColor" stroke-width="1.1"/>
-            <path d="M2.5 3.5v9c0 1.2 2.5 2.2 5.5 2.2s5.5-1 5.5-2.2v-9" stroke="currentColor" stroke-width="1.1"/>
-            <path d="M2.5 8c0 1.2 2.5 2.2 5.5 2.2s5.5-1 5.5-2.2" stroke="currentColor" stroke-width="1.1"/>
-          </svg>
-          <div>
-            <h1>PG Data Studio</h1>
-            <p>Configure a Postgres connection</p>
-          </div>
-        </div>
-
-        <div class="form-grid">
-          <label class="field-label" for="srcName">Name</label>
-          <input class="field" id="srcName" spellcheck="false" autocomplete="off" placeholder="My database" />
-
-          <div class="form-row">
-            <div class="form-col grow">
-              <label class="field-label" for="srcHost">Host</label>
-              <input class="field" id="srcHost" spellcheck="false" autocomplete="off" placeholder="localhost" />
-            </div>
-            <div class="form-col port">
-              <label class="field-label" for="srcPort">Port</label>
-              <input class="field" id="srcPort" type="number" inputmode="numeric" placeholder="5432" />
-            </div>
-          </div>
-
-          <div class="form-row">
-            <div class="form-col grow">
-              <label class="field-label" for="srcUser">User</label>
-              <input class="field" id="srcUser" spellcheck="false" autocomplete="off" placeholder="postgres" />
-            </div>
-            <div class="form-col grow">
-              <label class="field-label" for="srcPassword">Password</label>
-              <input class="field" id="srcPassword" type="password" autocomplete="off" placeholder="••••••••" />
-            </div>
-          </div>
-
-          <label class="field-label" for="srcDatabase">Database</label>
-          <input class="field" id="srcDatabase" spellcheck="false" autocomplete="off" placeholder="postgres" />
-
-          <label class="checkbox-row"><input type="checkbox" id="srcSsl" /> <span>Use SSL</span></label>
-
-          <label class="field-label" for="srcUrl">URL <span class="hint">— edit to fill the fields above</span></label>
-          <input class="field url" id="srcUrl" spellcheck="false" autocomplete="off" placeholder="postgres://user:password@localhost:5432/dbname" />
-        </div>
-
-        <div class="connect-error" id="connectError" hidden></div>
-
-        <div class="form-actions">
-          <button class="btn ghost danger" id="deleteSource" hidden>Delete</button>
-          <span class="test-result" id="testResult"></span>
-          <span class="spacer"></span>
-          <button class="btn ghost" id="testSource">Test</button>
-          <button class="btn ghost" id="saveSource">Save</button>
-          <button class="btn primary" id="connectBtn">Connect</button>
-        </div>
-        <p class="connect-note">
-          Saved locally in plaintext for convenience — same as a <code>.env</code> on your machine.
-        </p>
-      </section>
-    </div>
-
-    <!-- main workspace -->
-    <div class="app" id="app" hidden>
-      <aside class="side">
-        <div class="side-head">
-          <span>Tables</span>
-          <button class="icon-btn" id="refreshBtn" title="Refresh tables" aria-label="Refresh tables">
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2v3h-3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </button>
         </div>
         <div class="tree-filter">
           <input class="tree-filter-input" id="tableFilter" spellcheck="false" autocomplete="off" placeholder="Filter tables…" aria-label="Filter tables" />
         </div>
         <div class="tree" id="tree"></div>
       </aside>
+
+      <div class="splitter" id="splitter" role="separator" aria-orientation="vertical" title="Drag to resize"></div>
 
       <section class="main">
         <div class="toolbar">
@@ -164,6 +90,80 @@
     </div>
 
     <div class="toast" id="toast"></div>
+
+    <!-- source add/edit modal -->
+    <div class="modal-backdrop" id="sourceModal" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal-head">
+          <svg width="20" height="20" viewBox="0 0 16 16" fill="none" aria-hidden="true" class="modal-icon">
+            <ellipse cx="8" cy="3.5" rx="5.5" ry="2.2" stroke="currentColor" stroke-width="1.1"/>
+            <path d="M2.5 3.5v9c0 1.2 2.5 2.2 5.5 2.2s5.5-1 5.5-2.2v-9" stroke="currentColor" stroke-width="1.1"/>
+            <path d="M2.5 8c0 1.2 2.5 2.2 5.5 2.2s5.5-1 5.5-2.2" stroke="currentColor" stroke-width="1.1"/>
+          </svg>
+          <h2 id="modalTitle">New data source</h2>
+          <button class="icon-btn" id="modalClose" title="Close" aria-label="Close">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+
+        <div class="form-grid">
+          <label class="field-label" for="srcName">Name</label>
+          <input class="field" id="srcName" spellcheck="false" autocomplete="off" placeholder="My database" />
+
+          <div class="form-row">
+            <div class="form-col grow">
+              <label class="field-label" for="srcHost">Host</label>
+              <input class="field" id="srcHost" spellcheck="false" autocomplete="off" placeholder="localhost" />
+            </div>
+            <div class="form-col port">
+              <label class="field-label" for="srcPort">Port</label>
+              <input class="field" id="srcPort" type="number" inputmode="numeric" placeholder="5432" />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-col grow">
+              <label class="field-label" for="srcUser">User</label>
+              <input class="field" id="srcUser" spellcheck="false" autocomplete="off" placeholder="postgres" />
+            </div>
+            <div class="form-col grow">
+              <label class="field-label" for="srcPassword">Password</label>
+              <input class="field" id="srcPassword" type="password" autocomplete="off" placeholder="••••••••" />
+            </div>
+          </div>
+
+          <label class="field-label" for="srcDatabase">Database</label>
+          <input class="field" id="srcDatabase" spellcheck="false" autocomplete="off" placeholder="postgres" />
+
+          <label class="checkbox-row"><input type="checkbox" id="srcSsl" /> <span>Use SSL</span></label>
+
+          <label class="field-label" for="srcUrl">URL <span class="hint">— edit to fill the fields above</span></label>
+          <input class="field url" id="srcUrl" spellcheck="false" autocomplete="off" placeholder="postgres://user:password@localhost:5432/dbname" />
+        </div>
+
+        <div class="connect-error" id="connectError" hidden></div>
+
+        <div class="form-actions">
+          <span class="test-result" id="testResult"></span>
+          <span class="spacer"></span>
+          <button class="btn ghost" id="testSource">Test</button>
+          <button class="btn ghost" id="saveSource">Save</button>
+          <button class="btn primary" id="connectBtn">Connect</button>
+        </div>
+        <p class="connect-note">
+          Saved locally in plaintext for convenience — same as a <code>.env</code> on your machine.
+        </p>
+      </div>
+    </div>
+
+    <!-- right-click menu for a data source -->
+    <div class="ctx-menu" id="ctxMenu" hidden>
+      <button class="ctx-item" data-act="edit">Edit…</button>
+      <button class="ctx-item" data-act="duplicate">Duplicate</button>
+      <button class="ctx-item" data-act="disconnect">Disconnect</button>
+      <div class="ctx-sep"></div>
+      <button class="ctx-item danger" data-act="delete">Delete</button>
+    </div>
 
     <!-- per-column filter popover (anchored under a header's funnel icon) -->
     <div class="filter-pop" id="filterPop" hidden>

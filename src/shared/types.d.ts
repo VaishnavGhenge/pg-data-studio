@@ -109,6 +109,7 @@ interface Api {
   disconnect(): Promise<IpcResult<boolean>>;
   status(): Promise<IpcResult<DbStatus>>;
   listTables(): Promise<IpcResult<TableInfo[]>>;
+  tableColumns(schema: string, table: string): Promise<IpcResult<{ columns: Column[]; pk: string[] }>>;
   query(schema: string, table: string, opts: QueryOpts): Promise<IpcResult<QueryResult>>;
   applyChanges(
     schema: string,

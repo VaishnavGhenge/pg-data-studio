@@ -70,6 +70,11 @@ handle<DbStatus>("db:status", async () => ({
 
 handle<TableInfo[]>("db:listTables", async () => db.listTables());
 
+handle<{ columns: Column[]; pk: string[] }>(
+  "db:tableColumns",
+  async (schema: string, table: string) => db.getColumns(schema, table)
+);
+
 handle<QueryResult>("db:query", async (schema: string, table: string, opts: QueryOpts) =>
   db.runQuery(schema, table, opts)
 );

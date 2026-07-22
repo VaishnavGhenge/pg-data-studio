@@ -70,56 +70,335 @@
   ];
   const NO_VALUE_OPS = new Set<FilterOp>(["isnull", "notnull"]);
 
-  // ---------- connect screen: data sources + form ----------
-  const dbIcon =
-    '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><ellipse cx="8" cy="4" rx="5" ry="2" stroke="currentColor" stroke-width="1.1"/><path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2" stroke="currentColor" stroke-width="1.1"/></svg>';
+  // ---------- icons (Lucide, inlined as SVG paths — CSP blocks external loads) ----------
+  function svg(path: string, size = 14): string {
+    return (
+      '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" ' +
+      'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+      path + "</svg>"
+    );
+  }
+  const IC = {
+    database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/>',
+    chevron: '<path d="m9 18 6-6-6-6"/>',
+    schema: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+    table: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M12 3v18"/>',
+    column: '<path d="M8 3v18"/><path d="M16 3v18"/><path d="M3 12h18"/>',
+    key: '<circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/>',
+  };
+  // Used by the grid column headers (see renderGrid).
+  const funnelIcon =
+    '<svg width="11" height="11" viewBox="0 0 16 16" fill="none"><path d="M2 3h12l-4.6 5.6V13L6.6 14.5V8.6L2 3z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>';
 
+  // ---------- data sources + navigator state ----------
   let sources: Source[] = [];
-  let selectedId: string | null = null;
+  let formSourceId: string | null = null; // id of the source open in the modal ("" = new)
+  let ctxSourceId: string | null = null; // id of the source the context menu targets
 
-  async function initConnect(): Promise<void> {
+  const nav = {
+    connectedId: null as string | null,
+    busyId: null as string | null,
+    errorId: null as string | null,
+    expanded: new Set<string>(), // "src:<id>" | "sch:<schema>" | "tbl:<schema>.<table>"
+    columnsByTable: {} as Record<string, Column[]>,
+    loadingCols: new Set<string>(),
+  };
+  const kSrc = (id: string) => "src:" + id;
+  const kSch = (s: string) => "sch:" + s;
+  const kTbl = (s: string, t: string) => "tbl:" + s + "." + t;
+
+  async function boot(): Promise<void> {
     sources = await safe(window.api.listSources(), []);
-    renderSources();
-    if (sources[0]) selectSource(sources[0]);
-    else newSource();
+    renderNav();
+    if (!sources.length) openModal(null); // nothing saved yet — prompt to add one
   }
 
-  function renderSources(): void {
-    const list = $("sourcesList");
-    list.innerHTML = "";
+  // ---------- render the navigator tree ----------
+  function fmtCount(n: number): string {
+    if (n < 0) return "?";
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
+    if (n >= 1000) return (n / 1000).toFixed(1) + "k";
+    return String(n);
+  }
+
+  function groupTables(q: string): Record<string, TableInfo[]> {
+    const by: Record<string, TableInfo[]> = {};
+    for (const t of state.tables) {
+      if (q && !t.name.toLowerCase().includes(q)) continue;
+      (by[t.schema] = by[t.schema] || []).push(t);
+    }
+    return by;
+  }
+
+  interface RowOpts {
+    kind: "source" | "schema" | "table" | "column";
+    depth: number;
+    icon: string;
+    label: string;
+    id?: string;
+    schema?: string;
+    table?: string;
+    open?: boolean;
+    active?: boolean;
+    leaf?: boolean;
+    title?: string;
+    meta?: string;
+    type?: string;
+    pk?: boolean;
+    trailing?: string;
+  }
+
+  function navRow(o: RowOpts): string {
+    const pad = 6 + o.depth * 15;
+    const chev = o.leaf
+      ? '<span class="chev leaf"></span>'
+      : '<span class="chev">' + svg(IC.chevron, 13) + "</span>";
+    const data =
+      (o.id ? ' data-id="' + esc(o.id) + '"' : "") +
+      (o.schema ? ' data-schema="' + esc(o.schema) + '"' : "") +
+      (o.table ? ' data-table="' + esc(o.table) + '"' : "");
+    const typ = o.type ? '<span class="ntype">' + esc(o.type) + "</span>" : "";
+    const pk = o.pk ? '<span class="pkmini" title="primary key">' + svg(IC.key, 11) + "</span>" : "";
+    const trailing = o.trailing ?? (o.meta ? '<span class="nmeta">' + esc(o.meta) + "</span>" : "");
+    return (
+      '<div class="nrow ' + o.kind + (o.open ? " open" : "") + (o.active ? " active" : "") +
+      '" data-kind="' + o.kind + '"' + data +
+      ' style="padding-left:' + pad + 'px"' + (o.title ? ' title="' + esc(o.title) + '"' : "") + ">" +
+      chev +
+      '<span class="nic">' + svg(o.icon, o.kind === "source" ? 15 : 14) + "</span>" +
+      '<span class="nlabel">' + esc(o.label) + "</span>" +
+      typ + pk + trailing +
+      "</div>"
+    );
+  }
+
+  function renderNav(): void {
+    const tree = $("tree");
     if (!sources.length) {
-      const empty = document.createElement("div");
-      empty.className = "sources-empty";
-      empty.textContent = "No sources yet — fill in the form to add one.";
-      list.appendChild(empty);
+      tree.innerHTML = '<div class="tree-empty">No data sources yet. Click + to add one.</div>';
       return;
     }
-    sources.forEach((s) => {
-      const item = document.createElement("div");
-      item.className = "source-item" + (s.id === selectedId ? " active" : "");
-      item.innerHTML =
-        dbIcon +
-        '<span class="s-body"><span class="s-nm">' + esc(s.name) + "</span>" +
-        '<span class="s-sub">' + esc(s.host + ":" + s.port + "/" + s.database) + "</span></span>";
-      item.addEventListener("click", () => selectSource(s));
-      list.appendChild(item);
+    const q = state.tableFilter.toLowerCase();
+    let html = "";
+    for (const src of sources) {
+      const connected = nav.connectedId === src.id;
+      const open = connected && nav.expanded.has(kSrc(src.id));
+      const dot =
+        nav.busyId === src.id ? "connecting" :
+        nav.errorId === src.id ? "error" :
+        connected ? "connected" : "off";
+      html += navRow({
+        kind: "source", depth: 0, id: src.id, icon: IC.database, label: src.name, open,
+        title: src.host + ":" + src.port + "/" + src.database,
+        trailing: '<span class="ndot ' + dot + '"></span>',
+      });
+      if (open) html += renderSchemas(q);
+    }
+    tree.innerHTML = html;
+  }
+
+  function renderSchemas(q: string): string {
+    const by = groupTables(q);
+    const schemas = Object.keys(by);
+    if (!schemas.length) {
+      return '<div class="nempty" style="padding-left:36px">' + (q ? "no matches" : "no tables") + "</div>";
+    }
+    let html = "";
+    for (const schema of schemas) {
+      const open = q ? true : nav.expanded.has(kSch(schema)); // a filter force-opens schemas
+      html += navRow({ kind: "schema", depth: 1, schema, icon: IC.schema, label: schema, open });
+      if (open) html += renderTables(schema, by[schema]);
+    }
+    return html;
+  }
+
+  function renderTables(schema: string, tables: TableInfo[]): string {
+    let html = "";
+    for (const t of tables) {
+      const key = kTbl(schema, t.name);
+      const open = nav.expanded.has(key);
+      const active =
+        !!state.current && state.current.schema === schema && state.current.name === t.name;
+      html += navRow({
+        kind: "table", depth: 2, schema, table: t.name, icon: IC.table, label: t.name,
+        open, active, title: schema + "." + t.name, meta: fmtCount(t.estRows),
+      });
+      if (open) html += renderColumns(schema, t.name);
+    }
+    return html;
+  }
+
+  function renderColumns(schema: string, table: string): string {
+    const key = kTbl(schema, table);
+    const cols = nav.columnsByTable[key];
+    if (!cols) {
+      return '<div class="nloading" style="padding-left:54px">loading…</div>';
+    }
+    return cols
+      .map((c) =>
+        navRow({
+          kind: "column", depth: 3, icon: IC.column, label: c.name, leaf: true,
+          type: c.dataType, pk: c.isPk,
+        })
+      )
+      .join("");
+  }
+
+  // ---------- navigator interactions ----------
+  async function onNavClick(e: MouseEvent): Promise<void> {
+    const target = e.target as HTMLElement;
+    const row = target.closest<HTMLElement>(".nrow");
+    if (!row) return;
+    const kind = row.dataset.kind;
+    if (kind === "source") {
+      await onSourceClick(row.dataset.id!);
+    } else if (kind === "schema") {
+      toggleKey(kSch(row.dataset.schema!));
+    } else if (kind === "table") {
+      const onChevron = !!target.closest(".chev");
+      if (onChevron) await toggleTable(row.dataset.schema!, row.dataset.table!);
+      else await openTable(row.dataset.schema!, row.dataset.table!);
+    }
+  }
+
+  function toggleKey(key: string): void {
+    if (nav.expanded.has(key)) nav.expanded.delete(key);
+    else nav.expanded.add(key);
+    renderNav();
+  }
+
+  async function toggleTable(schema: string, table: string): Promise<void> {
+    const key = kTbl(schema, table);
+    if (nav.expanded.has(key)) {
+      nav.expanded.delete(key);
+      renderNav();
+      return;
+    }
+    nav.expanded.add(key);
+    if (!nav.columnsByTable[key] && !nav.loadingCols.has(key)) {
+      nav.loadingCols.add(key);
+      renderNav();
+      const res = await window.api.tableColumns(schema, table);
+      nav.loadingCols.delete(key);
+      if (res.ok) nav.columnsByTable[key] = res.data.columns;
+      else toast(res.error, true);
+    }
+    renderNav();
+  }
+
+  async function onSourceClick(id: string): Promise<void> {
+    if (nav.connectedId === id) {
+      toggleKey(kSrc(id)); // already connected — just expand/collapse
+      return;
+    }
+    const src = sources.find((s) => s.id === id);
+    if (src) await connectSource(src);
+  }
+
+  // Connect to a source, switching away from any currently-active one.
+  async function connectSource(src: Source): Promise<void> {
+    if (Object.keys(state.dirty).length && !confirmDiscard()) return;
+    nav.busyId = src.id;
+    nav.errorId = null;
+    renderNav();
+    const res = await window.api.connect(src);
+    nav.busyId = null;
+    if (!res.ok) {
+      nav.errorId = src.id;
+      renderNav();
+      toast(res.error, true);
+      return;
+    }
+    nav.connectedId = src.id;
+    nav.errorId = null;
+    nav.expanded = new Set([kSrc(src.id)]);
+    nav.columnsByTable = {};
+    clearWorkspace();
+    $("disconnectBtn").hidden = false;
+    $("titlebarConn").textContent = res.data.database + " · " + res.data.host;
+    const tr = await window.api.listTables();
+    state.tables = tr.ok ? tr.data : [];
+    const schemas = Object.keys(groupTables(""));
+    if (schemas.length === 1) nav.expanded.add(kSch(schemas[0])); // auto-open a lone schema
+    renderNav();
+  }
+
+  async function doDisconnect(): Promise<void> {
+    if (Object.keys(state.dirty).length && !confirmDiscard()) return;
+    await window.api.disconnect();
+    nav.connectedId = null;
+    nav.errorId = null;
+    nav.expanded.clear();
+    nav.columnsByTable = {};
+    state.tables = [];
+    clearWorkspace();
+    $("disconnectBtn").hidden = true;
+    $("titlebarConn").textContent = "";
+    renderNav();
+  }
+
+  // Reset the grid/query state back to "nothing open" (stays connected).
+  function clearWorkspace(): void {
+    Object.assign(state, {
+      current: null, columns: [], pk: [], rows: [], dirty: {},
+      sortCol: null, sortDir: "asc", filter: "", where: "", colFilters: {},
+      offset: 0, hasMore: false,
     });
+    asInput("filter").value = "";
+    asInput("where").value = "";
+    $("whereClear").hidden = true;
+    closeFilterPop();
+    $("thead").innerHTML = "";
+    $("tbody").innerHTML = "";
+    $("empty").hidden = false;
+    $("sql").textContent = "";
+    $("ms").textContent = "0";
+    $("pager").hidden = true;
+    renderPending();
   }
 
-  function selectSource(s: Source): void {
-    selectedId = s.id;
-    renderSources();
-    fillForm(s);
+  async function refreshNav(): Promise<void> {
+    sources = await safe(window.api.listSources(), sources);
+    if (nav.connectedId) {
+      const tr = await window.api.listTables();
+      if (tr.ok) state.tables = tr.data;
+      nav.columnsByTable = {};
+    }
+    renderNav();
   }
 
-  function newSource(): void {
-    selectedId = null;
-    renderSources();
-    fillForm(null);
+  // ---------- open a table into the grid ----------
+  async function openTable(schema: string, table: string): Promise<void> {
+    if (Object.keys(state.dirty).length && !confirmDiscard()) return;
+    state.current = { schema, name: table };
+    state.sortCol = null;
+    state.sortDir = "asc";
+    state.filter = "";
+    state.where = "";
+    state.colFilters = {};
+    state.dirty = {};
+    state.offset = 0;
+    asInput("filter").value = "";
+    asInput("where").value = "";
+    $("whereClear").hidden = true;
+    closeFilterPop();
+    renderNav(); // reflect the active table
+    await query();
+  }
+
+  // ---------- source add/edit modal ----------
+  function openModal(src: Source | null): void {
+    formSourceId = src ? src.id : null;
+    $("modalTitle").textContent = src ? "Edit data source" : "New data source";
+    fillForm(src);
+    $("sourceModal").hidden = false;
     asInput("srcName").focus();
   }
 
-  // ---- form <-> model ----
+  function closeModal(): void {
+    $("sourceModal").hidden = true;
+  }
+
   function fillForm(s: Source | null): void {
     asInput("srcName").value = s?.name ?? "";
     asInput("srcHost").value = s?.host ?? "localhost";
@@ -131,12 +410,11 @@
     syncUrlFromForm();
     showFormError("");
     $("testResult").textContent = "";
-    $("deleteSource").hidden = !s;
   }
 
   function readForm(): Source {
     return {
-      id: selectedId ?? "",
+      id: formSourceId ?? "",
       name: asInput("srcName").value.trim(),
       host: asInput("srcHost").value.trim(),
       port: Number(asInput("srcPort").value) || 5432,
@@ -205,16 +483,16 @@
     btn.textContent = label;
   }
 
-  // ---- actions ----
+  // Persist the form's source (upsert), refresh the list, return the saved row.
   async function persist(s: Source): Promise<Source | null> {
     const res = await window.api.saveSource(s);
     if (!res.ok) {
       showFormError(res.error);
       return null;
     }
-    selectedId = res.data.id;
+    formSourceId = res.data.id;
     sources = await safe(window.api.listSources(), sources);
-    renderSources();
+    renderNav();
     return res.data;
   }
 
@@ -226,11 +504,11 @@
     showFormError("");
     const btn = $("connectBtn") as HTMLButtonElement;
     setBusy(btn, "Connecting…", true);
-    await persist(s); // remember what we're connecting to, even if it fails
-    const res = await window.api.connect(s);
+    const saved = await persist(s);
     setBusy(btn, "Connect", false);
-    if (!res.ok) return showFormError(res.error);
-    enterWorkspace(res.data);
+    if (!saved) return;
+    closeModal();
+    await connectSource(saved);
   }
 
   async function doSave(): Promise<void> {
@@ -240,7 +518,7 @@
     if (!s.name) s.name = defaultName(s);
     const saved = await persist(s);
     if (saved) {
-      fillForm(saved);
+      closeModal();
       toast("✓ Saved");
     }
   }
@@ -266,131 +544,75 @@
     out.textContent = "✓ " + (res.data.serverVersion ?? "connected");
   }
 
-  async function doDelete(): Promise<void> {
-    if (!selectedId) return newSource();
-    const cur = sources.find((s) => s.id === selectedId);
-    if (cur && !window.confirm(`Delete source "${cur.name}"?`)) return;
-    await window.api.deleteSource(selectedId);
+  // ---------- source management (context menu) ----------
+  async function deleteSourceById(id: string): Promise<void> {
+    const src = sources.find((s) => s.id === id);
+    if (!src) return;
+    if (!window.confirm(`Delete data source "${src.name}"?`)) return;
+    if (nav.connectedId === id) await doDisconnect();
+    await window.api.deleteSource(id);
     sources = await safe(window.api.listSources(), []);
-    if (sources[0]) selectSource(sources[0]);
-    else newSource();
+    renderNav();
   }
 
-  function enterWorkspace(meta: DbMeta): void {
-    $("connect").hidden = true;
-    $("app").hidden = false;
-    $("disconnectBtn").hidden = false;
-    $("titlebarConn").textContent = meta.database + " · " + meta.host;
-    loadTables();
+  async function duplicateSource(id: string): Promise<void> {
+    const src = sources.find((s) => s.id === id);
+    if (!src) return;
+    await persist({ ...src, id: "", name: src.name + " (copy)" });
+    toast("✓ Duplicated");
   }
 
-  async function doDisconnect(): Promise<void> {
-    await window.api.disconnect();
-    Object.assign(state, {
-      tables: [], tableFilter: "", current: null, columns: [], pk: [], rows: [], dirty: {},
-      sortCol: null, sortDir: "asc", filter: "", where: "", colFilters: {},
-      offset: 0, hasMore: false,
+  function openCtxMenu(id: string, x: number, y: number): void {
+    ctxSourceId = id;
+    const menu = $("ctxMenu");
+    (menu.querySelector('[data-act="disconnect"]') as HTMLButtonElement).disabled =
+      nav.connectedId !== id;
+    menu.hidden = false;
+    const mw = menu.offsetWidth;
+    const mh = menu.offsetHeight;
+    menu.style.left = Math.min(x, window.innerWidth - mw - 8) + "px";
+    menu.style.top = Math.min(y, window.innerHeight - mh - 8) + "px";
+  }
+
+  function closeCtxMenu(): void {
+    ctxSourceId = null;
+    $("ctxMenu").hidden = true;
+  }
+
+  // ---------- resizable sidebar splitter ----------
+  function initSplitter(): void {
+    const splitter = $("splitter");
+    const root = document.documentElement;
+    try {
+      const saved = localStorage.getItem("sideW");
+      if (saved) root.style.setProperty("--side-w", saved);
+    } catch {
+      /* localStorage may be unavailable; width just won't persist */
+    }
+    splitter.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      const startX = (e as MouseEvent).clientX;
+      const startW = $("side").getBoundingClientRect().width;
+      splitter.classList.add("dragging");
+      document.body.classList.add("col-resizing");
+      const onMove = (ev: MouseEvent) => {
+        const w = Math.max(180, Math.min(560, startW + (ev.clientX - startX)));
+        root.style.setProperty("--side-w", w + "px");
+      };
+      const onUp = () => {
+        splitter.classList.remove("dragging");
+        document.body.classList.remove("col-resizing");
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        try {
+          localStorage.setItem("sideW", root.style.getPropertyValue("--side-w"));
+        } catch {
+          /* ignore */
+        }
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
     });
-    asInput("tableFilter").value = "";
-    closeFilterPop();
-    $("app").hidden = true;
-    $("disconnectBtn").hidden = true;
-    $("titlebarConn").textContent = "";
-    $("connect").hidden = false;
-    initConnect();
-  }
-
-  // ---------- sidebar ----------
-  const treeIcon =
-    '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="2" y="2.5" width="12" height="11" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M2 6h12M6.5 6v7.5" stroke="currentColor" stroke-width="1.2"/></svg>';
-  const funnelIcon =
-    '<svg width="11" height="11" viewBox="0 0 16 16" fill="none"><path d="M2 3h12l-4.6 5.6V13L6.6 14.5V8.6L2 3z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>';
-
-  async function loadTables(): Promise<void> {
-    const res = await window.api.listTables();
-    if (!res.ok) {
-      toast(res.error, true);
-      return;
-    }
-    state.tables = res.data;
-    renderTree();
-    if (state.tables.length && !state.current) {
-      selectTable(state.tables[0]);
-    }
-  }
-
-  function renderTree(): void {
-    const tree = $("tree");
-    const q = state.tableFilter.toLowerCase();
-    const matches = q
-      ? state.tables.filter((t) => t.name.toLowerCase().includes(q))
-      : state.tables;
-
-    const bySchema: Record<string, TableInfo[]> = {};
-    matches.forEach((t) => (bySchema[t.schema] = bySchema[t.schema] || []).push(t));
-
-    // Build the whole tree as one HTML string (fast) with data-* for delegation.
-    // No per-row listeners: a single click handler on #tree dispatches (see wire-up).
-    let html = "";
-    Object.keys(bySchema).forEach((schema) => {
-      html += '<div class="tgroup">' + esc(schema) + "</div>";
-      bySchema[schema].forEach((t) => {
-        const full = t.schema + "." + t.name;
-        html +=
-          '<div class="tbl" data-schema="' + esc(t.schema) + '" data-table="' + esc(t.name) +
-          '" title="' + esc(full) + '">' +
-          treeIcon +
-          '<span class="nm">' + esc(t.name) + "</span>" +
-          '<span class="rows">' + fmtCount(t.estRows) + "</span></div>";
-      });
-    });
-    if (!html) {
-      html = '<div class="tree-empty">' + (q ? "No matching tables" : "No tables") + "</div>";
-    }
-    tree.innerHTML = html;
-    highlightActiveTable();
-  }
-
-  // Move the .active marker to the current table without rebuilding the tree.
-  function highlightActiveTable(): void {
-    const tree = $("tree");
-    tree.querySelector(".tbl.active")?.classList.remove("active");
-    if (!state.current) return;
-    const sel =
-      '.tbl[data-schema="' + cssEsc(state.current.schema) +
-      '"][data-table="' + cssEsc(state.current.name) + '"]';
-    tree.querySelector(sel)?.classList.add("active");
-  }
-
-  // Escape a value for use inside a CSS attribute selector.
-  function cssEsc(s: string): string {
-    return s.replace(/["\\]/g, "\\$&");
-  }
-
-  function fmtCount(n: number): string {
-    if (n < 0) return "?";
-    if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
-    if (n >= 1000) return (n / 1000).toFixed(1) + "k";
-    return String(n);
-  }
-
-  // ---------- load + render a table ----------
-  async function selectTable(t: TableInfo): Promise<void> {
-    if (Object.keys(state.dirty).length && !confirmDiscard()) return;
-    state.current = { schema: t.schema, name: t.name };
-    state.sortCol = null;
-    state.sortDir = "asc";
-    state.filter = "";
-    state.where = "";
-    state.colFilters = {};
-    state.dirty = {};
-    state.offset = 0;
-    asInput("filter").value = "";
-    asInput("where").value = "";
-    $("whereClear").hidden = true;
-    closeFilterPop();
-    highlightActiveTable();
-    await query();
   }
 
   async function query(): Promise<void> {
@@ -843,12 +1065,15 @@
   }
 
   // ---------- wire up ----------
+  // Modal (add/edit source)
   $("connectBtn").addEventListener("click", doConnect);
   $("saveSource").addEventListener("click", doSave);
   $("testSource").addEventListener("click", doTest);
-  $("deleteSource").addEventListener("click", doDelete);
-  $("newSource").addEventListener("click", newSource);
-  $("removeSource").addEventListener("click", doDelete);
+  $("newSource").addEventListener("click", () => openModal(null));
+  $("modalClose").addEventListener("click", closeModal);
+  $("sourceModal").addEventListener("mousedown", (e) => {
+    if (e.target === $("sourceModal")) closeModal(); // click on backdrop
+  });
   // Structured fields keep the URL field in sync; Enter connects.
   ["srcName", "srcHost", "srcPort", "srcUser", "srcPassword", "srcDatabase"].forEach((id) => {
     const el = asInput(id);
@@ -863,21 +1088,45 @@
   asInput("srcUrl").addEventListener("keydown", (e) => {
     if ((e as KeyboardEvent).key === "Enter") { parseUrlToForm(); doConnect(); }
   });
+
+  // Navigator
   $("disconnectBtn").addEventListener("click", doDisconnect);
-  $("refreshBtn").addEventListener("click", loadTables);
-  // One delegated handler for the whole table list (no per-row listeners).
-  $("tree").addEventListener("click", (e) => {
-    const el = (e.target as HTMLElement).closest<HTMLElement>(".tbl");
-    if (!el) return;
-    const t = state.tables.find(
-      (x) => x.schema === el.dataset.schema && x.name === el.dataset.table
-    );
-    if (t) selectTable(t);
+  $("refreshBtn").addEventListener("click", refreshNav);
+  $("tree").addEventListener("click", (e) => onNavClick(e as MouseEvent));
+  $("tree").addEventListener("contextmenu", (e) => {
+    const row = (e.target as HTMLElement).closest<HTMLElement>(".nrow.source");
+    if (!row) return;
+    e.preventDefault();
+    openCtxMenu(row.dataset.id!, (e as MouseEvent).clientX, (e as MouseEvent).clientY);
   });
   asInput("tableFilter").addEventListener("input", (e) => {
     state.tableFilter = (e.target as HTMLInputElement).value.trim();
-    renderTree();
+    renderNav();
   });
+
+  // Context menu
+  $("ctxMenu").addEventListener("click", (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>(".ctx-item");
+    if (!btn || btn.hasAttribute("disabled")) return;
+    const id = ctxSourceId;
+    const act = btn.dataset.act;
+    closeCtxMenu();
+    if (!id) return;
+    if (act === "edit") { const s = sources.find((x) => x.id === id); if (s) openModal(s); }
+    else if (act === "duplicate") duplicateSource(id);
+    else if (act === "disconnect") { if (nav.connectedId === id) doDisconnect(); }
+    else if (act === "delete") deleteSourceById(id);
+  });
+  document.addEventListener("mousedown", (e) => {
+    if (ctxSourceId && !(e.target as HTMLElement).closest("#ctxMenu")) closeCtxMenu();
+  });
+  document.addEventListener("keydown", (e) => {
+    if ((e as KeyboardEvent).key !== "Escape") return;
+    if (ctxSourceId) closeCtxMenu();
+    else if (!$("sourceModal").hidden) closeModal();
+  });
+
+  // Grid / query
   asInput("filter").addEventListener("input", (e) => {
     state.filter = (e.target as HTMLInputElement).value.trim();
     renderGrid();
@@ -893,6 +1142,7 @@
   });
   $("whereClear").addEventListener("click", clearWhere);
   initFilterPop();
+  initSplitter();
 
-  initConnect();
+  boot();
 })();

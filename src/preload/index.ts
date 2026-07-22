@@ -12,6 +12,8 @@ const api: Api = {
   disconnect: () => invoke<boolean>("db:disconnect"),
   status: () => invoke<DbStatus>("db:status"),
   listTables: () => invoke<TableInfo[]>("db:listTables"),
+  tableColumns: (schema, table) =>
+    invoke<{ columns: Column[]; pk: string[] }>("db:tableColumns", schema, table),
   query: (schema, table, opts) => invoke<QueryResult>("db:query", schema, table, opts),
   applyChanges: (schema, table, changes) =>
     invoke<ApplyResult>("db:applyChanges", schema, table, changes),
