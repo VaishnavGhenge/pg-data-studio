@@ -1,5 +1,6 @@
 import { resolve } from "path";
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
+import react from "@vitejs/plugin-react";
 
 // main/preload: plain TS bundled for Node/Electron. `pg` (and any other
 // node_modules dep) stays a real runtime dependency rather than getting
@@ -25,6 +26,7 @@ export default defineConfig({
   },
   renderer: {
     root: "src/renderer",
+    plugins: [react()],
     build: {
       rollupOptions: {
         input: { index: resolve(__dirname, "src/renderer/index.html") },
