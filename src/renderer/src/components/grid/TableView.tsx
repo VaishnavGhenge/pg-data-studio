@@ -78,7 +78,12 @@ export function TableView() {
         onSave={() => setPreviewOpen(true)}
         onRevert={revertAll}
       />
-      <WhereBar appliedWhere={state.where} columns={state.columns} onApply={applyWhere} />
+      <WhereBar
+        appliedWhere={state.where}
+        columns={state.columns}
+        tableName={state.current?.name ?? ""}
+        onApply={applyWhere}
+      />
       <div className="grid-scroll">
         {state.current ? (
           <GridTable key={resultKey} rows={visibleRows} />

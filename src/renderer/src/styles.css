@@ -310,31 +310,22 @@ body.col-resizing { cursor: col-resize; user-select: none; }
   width: 22px; height: 22px; color: var(--accent); background: var(--accent-soft);
   border-radius: 5px; flex: 0 0 auto;
 }
-.wherebar-input-wrap { position: relative; flex: 1 1 auto; min-width: 0; }
+/* .wherebar-input is now a plain <div> wrapping a CodeMirror instance (for
+   syntax highlighting + schema-aware completion) rather than a native
+   <input> — :focus-within (not :focus) reflects focus on the actual
+   contenteditable region CodeMirror mounts inside it. */
 .wherebar-input {
-  font: inherit; font-family: var(--mono); font-size: 12px; color: var(--text);
+  flex: 1 1 auto; min-width: 0;
+  font-family: var(--mono); font-size: 12px; color: var(--text);
   background: var(--editor); border: 1px solid var(--border); border-radius: 6px;
-  padding: 5px 10px; width: 100%;
+  padding: 5px 10px;
 }
-.wherebar-input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
-.wherebar-input::placeholder { color: var(--text-faint); }
+.wherebar-input:focus-within { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
 .wherebar-input.active { border-color: var(--accent); background: var(--accent-soft); }
 .wherebar-hint {
   font-family: var(--mono); font-size: 10.5px; color: var(--text-faint);
   white-space: nowrap; flex: 0 0 auto; user-select: none;
 }
-/* ---- WHERE bar column-name suggestions ---- */
-.wherebar-suggest {
-  position: absolute; top: calc(100% + 4px); left: 0; z-index: 55;
-  min-width: 160px; max-width: 320px; max-height: 220px; overflow-y: auto;
-  background: var(--panel); border: 1px solid var(--border-strong); border-radius: 8px;
-  box-shadow: var(--shadow); padding: 4px;
-}
-.wherebar-suggest-item {
-  font-family: var(--mono); font-size: 12px; color: var(--text-dim);
-  padding: 5px 9px; border-radius: 5px; cursor: pointer; white-space: nowrap;
-}
-.wherebar-suggest-item.active, .wherebar-suggest-item:hover { background: var(--sel); color: var(--text); }
 .wherebar-clear {
   flex: 0 0 auto; width: 22px; height: 22px; padding: 0; font-size: 15px; line-height: 1;
   background: transparent; border: 1px solid var(--border-strong); border-radius: 6px;

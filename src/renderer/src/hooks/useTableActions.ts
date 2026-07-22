@@ -23,6 +23,13 @@ export function useTableActions() {
   const { show: toast } = useToast();
   const runGuarded = useConfirmedAction();
 
+  // Returns whether the query actually succeeded. Callers that change
+  // sort/where/filters/page use this to decide whether to commit that
+  // change to TableContext — a failed query (a raw WHERE clause is
+  // user-authored SQL, so it can genuinely fail with a syntax error) must
+  // NOT be committed, or the bar/header would show the attempted filter as
+  // "active" while the grid silently kept showing the previous, unrelated
+  // data. The toast still explains what went wrong either way.
   async function query(
     schema: string,
     name: string,
@@ -31,7 +38,7 @@ export function useTableActions() {
     sortDir: "asc" | "desc",
     where: string,
     colFilters: ColFilters
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
       const data = await unwrap(
         window.api.query(schema, name, {
@@ -57,13 +64,18 @@ export function useTableActions() {
         ms: data.ms,
         previewSql: data.previewSql,
       });
+      return true;
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), true);
+      return false;
     }
   }
 
   async function openTable(schema: string, name: string): Promise<void> {
     await runGuarded(async () => {
+      // Opening a table is a fresh start, not a change to an existing good
+      // state, so this one commits unconditionally — a failed query just
+      // leaves that table open with an empty grid and an explanatory toast.
       dispatch({ type: "OPEN_TABLE", schema, name });
       await query(schema, name, 0, null, "asc", "", {});
     });
@@ -75,8 +87,8 @@ export function useTableActions() {
     if (next === state.offset) return;
     const { schema, name } = state.current;
     await runGuarded(async () => {
-      dispatch({ type: "SET_OFFSET", offset: next });
-      await query(schema, name, next, state.sortCol, state.sortDir, state.where, state.colFilters);
+      const ok = await query(schema, name, next, state.sortCol, state.sortDir, state.where, state.colFilters);
+      if (ok) dispatch({ type: "SET_OFFSET", offset: next });
     });
   }
 
@@ -84,8 +96,8 @@ export function useTableActions() {
     if (!state.current || nextWhere === state.where) return;
     const { schema, name } = state.current;
     await runGuarded(async () => {
-      dispatch({ type: "SET_WHERE", where: nextWhere });
-      await query(schema, name, 0, state.sortCol, state.sortDir, nextWhere, state.colFilters);
+      const ok = await query(schema, name, 0, state.sortCol, state.sortDir, nextWhere, state.colFilters);
+      if (ok) dispatch({ type: "SET_WHERE", where: nextWhere });
     });
   }
 
@@ -108,8 +120,8 @@ export function useTableActions() {
       nextDir = "asc";
     }
     await runGuarded(async () => {
-      dispatch({ type: "SET_SORT", col: nextCol, dir: nextDir });
-      await query(schema, name, 0, nextCol, nextDir, state.where, state.colFilters);
+      const ok = await query(schema, name, 0, nextCol, nextDir, state.where, state.colFilters);
+      if (ok) dispatch({ type: "SET_SORT", col: nextCol, dir: nextDir });
     });
   }
 
@@ -134,8 +146,8 @@ export function useTableActions() {
       const nextFilters = { ...state.colFilters };
       if (filter) nextFilters[col] = filter;
       else delete nextFilters[col];
-      dispatch({ type: "SET_COL_FILTER", col, filter });
-      await query(schema, name, 0, state.sortCol, state.sortDir, state.where, nextFilters);
+      const ok = await query(schema, name, 0, state.sortCol, state.sortDir, state.where, nextFilters);
+      if (ok) dispatch({ type: "SET_COL_FILTER", col, filter });
     });
   }
 
