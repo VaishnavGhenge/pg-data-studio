@@ -58,7 +58,7 @@ v0.1.0 shipped as the initial commit. Since then, four features have merged to
     `grid-template-rows: minmax(0, 1fr)` + `min-height: 0` on flex children so
     their `overflow:auto` regions actually scroll.
 
-### Table filter + navigator — on `feature/db-navigator`
+### Table filter + navigator — merged
 - Sidebar table filter (type-to-narrow) + full-name tooltips; tree renders as one
   delegated list (perf fix for the table-listing lag).
 - Reworked into a DataGrip-style **database navigator**: lazy tree of
@@ -67,6 +67,35 @@ v0.1.0 shipped as the initial commit. Since then, four features have merged to
 - Connection form moved into a **modal**; **right-click** a source for
   Edit / Duplicate / Disconnect / Delete; **draggable sidebar splitter**
   (persisted). Icons switched to inlined Lucide SVGs.
+- Grid cells: single click selects/highlights, double click edits; Save/Revert
+  live in the toolbar with a live change count; a reusable in-app confirm
+  dialog replaced `window.confirm()`.
+
+### React rewrite — on `feature/react-rewrite` (not yet merged)
+- Renderer rebuilt in React + TypeScript, replacing the ~1,300-line vanilla
+  DOM-string renderer. `main`/`preload`/`db`/`store` are unchanged.
+- Toolchain moved from `tsc` + `scripts/copy-assets.js` to **electron-vite**
+  (Vite/HMR for the renderer in dev; main/preload still plain TS). CSP moved
+  from a static `<meta>` tag to a header set in the main process
+  (`session.webRequest.onHeadersReceived`), strict when packaged and relaxed
+  only for the dev server's HMR.
+- State: four scoped Context+`useReducer` stores (`sourcesStore`,
+  `tableStore`, `toastStore`, `confirmStore`) — state and dispatch split into
+  separate contexts each so a dispatch-only consumer never re-renders on
+  state changes. Cell selection/edit-in-progress state and the navigator's
+  lazy-column cache are deliberately local component state, not global.
+- Cell editing swapped `contenteditable` toggling for a real `<input>`
+  rendered in place of the `<span>` only while editing — same select/edit/
+  commit/revert/NULL semantics, verbatim commit math ported to
+  `lib/dirty.ts`. `GridRow`/`GridCell` are memoized on primitive per-cell
+  props so a keystroke in one cell doesn't re-render the other 199 rows.
+- `useConfirmedAction()` centralizes the "dirty? confirm discard" guard that
+  was copy-pasted at 7 call sites in the old renderer.
+- Verified end-to-end against a real database via Chrome DevTools Protocol
+  (driving actual clicks/keystrokes): connect, tree, sort, pagination, WHERE
+  bar, column filters, quick filter, cell select/edit/commit/revert/Set NULL,
+  the full-value editor, the discard-confirmation guard, and source
+  management. Save-to-database itself wasn't exercised against real data.
 
 ## TODO
 
@@ -100,9 +129,11 @@ Next up (rough priority):
 
 - One feature per `feature/<name>` branch; merge to `main` with `--no-ff`, then
   delete the branch.
-- After changes: `npx tsc --noEmit` and `npm run build`. Run with `npm start`
-  (build + Electron). Dev loop: `npm run watch` in one terminal, `npm start` in
-  another.
+- After changes: `npm run typecheck` and `npm run build` (both via
+  electron-vite). Dev loop: `npm run dev` (electron-vite dev — HMR for the
+  renderer, restarts main/preload on change). `npm start` runs
+  `electron-vite preview` against a production build, for smoke-testing
+  without packaging.
 
 ## Commit history
 

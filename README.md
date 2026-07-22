@@ -17,33 +17,27 @@ IPC bridge.
 
 ```bash
 npm install
-npm start        # compiles TS → dist/, then launches Electron
+npm run dev      # electron-vite dev — HMR for the renderer, launches Electron
 ```
 
-For development, run the compiler in watch mode in one terminal and Electron in
-another:
+`npm start` builds and runs a production build via `electron-vite preview`, for
+smoke-testing without packaging a distributable.
 
-```bash
-npm run watch    # tsc -w
-npm start        # re-run after a rebuild
-```
-
-On launch you'll get a connect screen. Paste a connection string:
-
-```
-postgres://user:password@localhost:5432/dbname
-```
-
-It's remembered for next time (stored in plaintext in the app's user-data dir —
-same trust model as a local `.env`).
+On first launch, click **+** in the sidebar to add a data source — a structured
+form (host/port/user/password/database/SSL) that stays in sync with a raw
+`postgres://` URL field, whichever you'd rather edit. Saved sources are
+remembered for next time (stored in plaintext in the app's user-data dir — same
+trust model as a local `.env`).
 
 ## What it does
 
 - **Browse** — tables grouped by schema in the sidebar, with row estimates.
 - **View** — first 200 rows, server-side sort by clicking a column header.
 - **Filter** — quick client-side filter over the loaded rows.
-- **Edit** — click any non-key cell and type. Empty a cell to set `NULL`.
-- **Review** — the pending bar shows the exact `UPDATE … WHERE <pk> = …` per row.
+- **Edit** — click a non-key cell to select it, double-click (or Enter) to
+  edit. Empty a cell to set `NULL`.
+- **Review** — dirty cells/rows are highlighted; Save/Revert live in the
+  toolbar with a live pending-change count.
 - **Save** — all edits apply in one transaction; on failure, nothing is written.
 
 Editing needs a primary key: it's what maps an edited cell back to the right row.
@@ -54,23 +48,27 @@ Tables without one are read-only (by design — safer than guessing).
 ```
 src/
   shared/
-    types.d.ts  Ambient types shared by all three layers (compile to nothing)
+    types.d.ts    Ambient types shared by all three layers (compile to nothing)
   main/
-    index.ts    Electron entry, window, IPC handlers (thin wrappers)
-    db.ts       All pg access; identifier validation + parameterized SQL
-    store.ts    Remembers recent connection strings
+    index.ts      Electron entry, window, IPC handlers (thin wrappers), CSP header
+    db.ts         All pg access; identifier validation + parameterized SQL
+    store.ts      Persists saved data sources
   preload/
-    index.ts    contextBridge → window.api (the only renderer↔main surface)
+    index.ts      contextBridge → window.api (the only renderer↔main surface)
   renderer/
-    index.html
-    styles.css
-    app.ts      UI only; no Node, no DB — sandboxed global script
+    index.html    Mounts a single #root
+    src/
+      main.tsx, App.tsx     React entry + top-level composition
+      state/                Context + useReducer stores (sources/table/toast/confirm)
+      hooks/                IPC + action orchestration (useSourceActions, useTableActions, …)
+      lib/                  Pure helpers (dirty-tracking math, row identity, filter ops)
+      components/           layout/, navigator/, grid/, common/
 ```
 
-TypeScript compiles `src/ → dist/` (`tsc`), and a small `scripts/copy-assets.js`
-copies the renderer's HTML/CSS into `dist/`. No bundler. The shared `types.d.ts`
-has no imports/exports, so its types are globally visible to every layer and the
-renderer stays a plain browser script — no `require` at runtime.
+Built with **electron-vite**: main/preload compile as plain TypeScript, the
+renderer is React + TypeScript via Vite (with HMR in `npm run dev`). The shared
+`types.d.ts` has no imports/exports, so its types are globally visible to every
+layer without an explicit import.
 
 Security posture: `contextIsolation: true`, `nodeIntegration: false`,
 `sandbox: true`, strict CSP, external links open in the OS browser.
