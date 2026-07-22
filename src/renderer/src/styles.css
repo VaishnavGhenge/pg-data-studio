@@ -333,8 +333,16 @@ body.col-resizing { cursor: col-resize; user-select: none; }
 .wherebar-input:focus-within { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
 .wherebar-input.active { border-color: var(--accent); background: var(--accent-soft); }
 .wherebar-hint {
-  font-family: var(--mono); font-size: 10.5px; color: var(--text-faint);
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10.5px; color: var(--text-faint);
   white-space: nowrap; flex: 0 0 auto; user-select: none;
+}
+.wherebar-key {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; padding: 0;
+  background: var(--panel-2); border: 1px solid var(--border-strong); border-radius: 4px;
+  box-shadow: 0 1px 0 var(--border-strong);
+  color: var(--text-faint); font: inherit;
 }
 .wherebar-clear {
   flex: 0 0 auto; width: 22px; height: 22px; padding: 0; font-size: 15px; line-height: 1;

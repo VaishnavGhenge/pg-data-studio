@@ -194,6 +194,20 @@ export function CopyIcon({ size = 12 }: IconProps) {
   );
 }
 
+export function CornerDownLeftIcon({ size = 11 }: IconProps) {
+  return (
+    <Lucide
+      size={size}
+      path={
+        <>
+          <path d="m9 10-5 5 5 5" />
+          <path d="M20 4v7a4 4 0 0 1-4 4H4" />
+        </>
+      }
+    />
+  );
+}
+
 export function CodeIcon({ size = 14 }: IconProps) {
   return (
     <Lucide

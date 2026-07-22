@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CodeIcon } from "../common/icons";
+import { CodeIcon, CornerDownLeftIcon } from "../common/icons";
 import { SqlEditor } from "./SqlEditor";
 
 interface WhereBarProps {
@@ -35,7 +35,14 @@ export function WhereBar({ appliedWhere, columns, tableName, onApply }: WhereBar
         tableName={tableName}
         columnNames={columns.map((c) => c.name)}
       />
-      {text === "" && <span className="wherebar-hint">↵ to apply</span>}
+      {text === "" && (
+        <span className="wherebar-hint">
+          <kbd className="wherebar-key">
+            <CornerDownLeftIcon size={11} />
+          </kbd>
+          to apply
+        </span>
+      )}
       {appliedWhere !== "" && (
         <button
           className="wherebar-clear"
