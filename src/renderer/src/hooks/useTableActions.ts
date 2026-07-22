@@ -89,14 +89,27 @@ export function useTableActions() {
     });
   }
 
+  // Three-state cycle per column: unsorted -> asc -> desc -> unsorted (back
+  // to the table's default order), rather than only ever toggling between
+  // asc/desc with no way back to unsorted.
   async function setSort(col: string): Promise<void> {
     if (!state.current) return;
     const { schema, name } = state.current;
-    const sortDir: "asc" | "desc" =
-      state.sortCol === col ? (state.sortDir === "asc" ? "desc" : "asc") : "asc";
+    let nextCol: string | null;
+    let nextDir: "asc" | "desc";
+    if (state.sortCol !== col) {
+      nextCol = col;
+      nextDir = "asc";
+    } else if (state.sortDir === "asc") {
+      nextCol = col;
+      nextDir = "desc";
+    } else {
+      nextCol = null;
+      nextDir = "asc";
+    }
     await runGuarded(async () => {
-      dispatch({ type: "SET_SORT", col });
-      await query(schema, name, 0, col, sortDir, state.where, state.colFilters);
+      dispatch({ type: "SET_SORT", col: nextCol, dir: nextDir });
+      await query(schema, name, 0, nextCol, nextDir, state.where, state.colFilters);
     });
   }
 

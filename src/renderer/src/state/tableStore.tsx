@@ -53,7 +53,7 @@ export type TableAction =
       ms: number;
       previewSql: string;
     }
-  | { type: "SET_SORT"; col: string }
+  | { type: "SET_SORT"; col: string | null; dir: "asc" | "desc" }
   | { type: "SET_OFFSET"; offset: number }
   | { type: "SET_WHERE"; where: string }
   | { type: "SET_COL_FILTER"; col: string; filter: { op: FilterOp; value: string } | null }
@@ -85,11 +85,10 @@ function tableReducer(state: TableState, action: TableAction): TableState {
         ms: action.ms,
         previewSql: action.previewSql,
       };
-    case "SET_SORT": {
-      const sortDir: "asc" | "desc" =
-        state.sortCol === action.col ? (state.sortDir === "asc" ? "desc" : "asc") : "asc";
-      return { ...state, sortCol: action.col, sortDir, offset: 0, dirty: {} };
-    }
+    // col/dir are pre-computed by the caller (useTableActions.setSort), which
+    // owns the asc -> desc -> unsorted cycle.
+    case "SET_SORT":
+      return { ...state, sortCol: action.col, sortDir: action.dir, offset: 0, dirty: {} };
     case "SET_OFFSET":
       return { ...state, offset: action.offset, dirty: {} };
     case "SET_WHERE":

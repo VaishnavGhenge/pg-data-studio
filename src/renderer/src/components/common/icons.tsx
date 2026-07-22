@@ -40,6 +40,34 @@ export function DatabaseIcon({ size = 15 }: IconProps) {
   );
 }
 
+export function ArrowUpIcon({ size = 12 }: IconProps) {
+  return (
+    <Lucide
+      size={size}
+      path={
+        <>
+          <path d="m5 12 7-7 7 7" />
+          <path d="M12 19V5" />
+        </>
+      }
+    />
+  );
+}
+
+export function ArrowDownIcon({ size = 12 }: IconProps) {
+  return (
+    <Lucide
+      size={size}
+      path={
+        <>
+          <path d="M12 5v14" />
+          <path d="m19 12-7 7-7-7" />
+        </>
+      }
+    />
+  );
+}
+
 export function ChevronIcon({ size = 13 }: IconProps) {
   return <Lucide size={size} path={<path d="m9 18 6-6-6-6" />} />;
 }

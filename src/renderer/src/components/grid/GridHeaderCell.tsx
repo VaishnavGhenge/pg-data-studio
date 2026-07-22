@@ -1,5 +1,5 @@
 import type { MouseEvent } from "react";
-import { FunnelIcon } from "../common/icons";
+import { ArrowDownIcon, ArrowUpIcon, FunnelIcon } from "../common/icons";
 
 interface GridHeaderCellProps {
   column: Column;
@@ -37,7 +37,9 @@ export function GridHeaderCell({
         >
           <FunnelIcon size={11} />
         </span>
-        <span className="sort">{sorted ? (sortDir === "asc" ? "▲" : "▼") : ""}</span>
+        <span className="sort">
+          {sorted && (sortDir === "asc" ? <ArrowUpIcon size={12} /> : <ArrowDownIcon size={12} />)}
+        </span>
       </div>
     </th>
   );

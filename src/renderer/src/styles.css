@@ -364,7 +364,7 @@ thead th .pkbadge {
   border-radius: 3px; padding: 0 3px; opacity: 0.85;
 }
 thead th .typ { color: var(--text-faint); font-weight: 400; font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
-thead th .sort { margin-left: 2px; color: var(--accent); font-size: 10px; opacity: 0; }
+thead th .sort { margin-left: 2px; color: var(--accent); display: inline-flex; align-items: center; opacity: 0; }
 thead th.sorted .sort { opacity: 1; }
 thead th .funnel {
   margin-left: auto; display: inline-flex; color: var(--text-faint); cursor: pointer;
