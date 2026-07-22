@@ -81,7 +81,7 @@ export function useSourceActions() {
       if (!src) return;
       try {
         await saveSource({ ...src, id: "", name: src.name + " (copy)" });
-        toast("✓ Duplicated");
+        toast("Duplicated");
       } catch (e) {
         toast(e instanceof Error ? e.message : String(e), true);
       }

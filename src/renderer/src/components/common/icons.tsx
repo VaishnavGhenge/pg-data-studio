@@ -147,6 +147,39 @@ export function CheckIcon({ size = 15 }: IconProps) {
   return <Lucide size={size} path={<path d="M20 6 9 17l-5-5" />} />;
 }
 
+// Success/error indicators for the toast and connection-test result — a
+// bare tick/cross reads as an ad-hoc text character (and did, baked
+// directly into message strings); a circled glyph reads as a deliberate
+// status icon instead.
+export function CheckCircleIcon({ size = 14 }: IconProps) {
+  return (
+    <Lucide
+      size={size}
+      path={
+        <>
+          <circle cx="12" cy="12" r="10" />
+          <path d="m9 12 2 2 4-4" />
+        </>
+      }
+    />
+  );
+}
+
+export function AlertCircleIcon({ size = 14 }: IconProps) {
+  return (
+    <Lucide
+      size={size}
+      path={
+        <>
+          <circle cx="12" cy="12" r="10" />
+          <line x1="12" x2="12" y1="8" y2="12" />
+          <line x1="12" x2="12.01" y1="16" y2="16" />
+        </>
+      }
+    />
+  );
+}
+
 export function CopyIcon({ size = 12 }: IconProps) {
   return (
     <Lucide

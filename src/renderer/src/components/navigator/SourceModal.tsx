@@ -9,7 +9,7 @@ import { Modal } from "../common/Modal";
 import { useSourceActions } from "../../hooks/useSourceActions";
 import { useToast } from "../../state/toastStore";
 import { unwrap } from "../../hooks/useApi";
-import { DatabaseModalIcon, CloseIcon } from "../common/icons";
+import { AlertCircleIcon, CheckCircleIcon, DatabaseModalIcon, CloseIcon } from "../common/icons";
 
 interface FormFields {
   name: string;
@@ -167,7 +167,7 @@ function SourceModalForm({ source, onClose }: { source: Source | null; onClose: 
     try {
       await saveSource(buildSourceForSubmit(source?.id ?? null, f));
       onClose();
-      toast("✓ Saved");
+      toast("Saved");
     } catch (e) {
       setFormError(e instanceof Error ? e.message : String(e));
     }
@@ -181,9 +181,9 @@ function SourceModalForm({ source, onClose }: { source: Source | null; onClose: 
     setTesting(true);
     try {
       const meta = await unwrap(window.api.testConnection(buildSourceForSubmit(null, fields)));
-      setTestResult({ text: "✓ " + (meta.serverVersion ?? "connected"), ok: true });
+      setTestResult({ text: meta.serverVersion ?? "connected", ok: true });
     } catch (e) {
-      setTestResult({ text: "✕ " + (e instanceof Error ? e.message : String(e)), ok: false });
+      setTestResult({ text: e instanceof Error ? e.message : String(e), ok: false });
     } finally {
       setTesting(false);
     }
@@ -332,6 +332,7 @@ function SourceModalForm({ source, onClose }: { source: Source | null; onClose: 
           className={"test-result" + (testResult ? (testResult.ok ? " ok" : " err") : "")}
           title={testResult?.text}
         >
+          {!testing && testResult && (testResult.ok ? <CheckCircleIcon size={12} /> : <AlertCircleIcon size={12} />)}
           {testing ? "Testing…" : (testResult?.text ?? "")}
         </span>
         <span className="spacer" />

@@ -159,7 +159,7 @@ export function useTableActions() {
       const res = await unwrap(window.api.applyChanges(schema, name, changes));
       dispatch({ type: "SAVE_SUCCESS" });
       await query(schema, name, state.offset, state.sortCol, state.sortDir, state.where, state.colFilters);
-      toast("✓ " + res.updated + (res.updated === 1 ? " row" : " rows") + " updated");
+      toast(res.updated + (res.updated === 1 ? " row" : " rows") + " updated");
     } catch (e) {
       // Dirty state is intentionally left in place on failure, matching the
       // old renderer — a failed save shouldn't silently discard the edits.

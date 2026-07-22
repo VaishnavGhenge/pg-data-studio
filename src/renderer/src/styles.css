@@ -124,11 +124,13 @@ body {
 .btn.danger { color: var(--danger); border-color: var(--danger); }
 .btn.danger:hover { background: var(--danger-soft); color: var(--danger); }
 .test-result {
+  display: flex; align-items: center; gap: 5px;
   font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--text-faint);
   padding: 5px 9px; border-radius: 6px; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto;
 }
 .test-result:empty { padding: 0; }
+.test-result svg { flex: 0 0 auto; }
 .test-result.ok { color: var(--good); background: var(--good-soft); }
 .test-result.err { color: var(--danger); background: var(--danger-soft); }
 .connect-note { margin: 2px 0 0; font-size: 11px; color: var(--text-faint); }
@@ -503,10 +505,12 @@ tbody .gutter {
 /* ---- toast ---- */
 .toast {
   position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%) translateY(20px);
+  display: flex; align-items: center; gap: 8px;
   color: #fff; font-size: 12.5px; font-weight: 600; padding: 9px 18px; border-radius: 8px;
   box-shadow: var(--shadow); font-family: var(--mono); opacity: 0; pointer-events: none;
   transition: opacity 0.2s, transform 0.2s; z-index: 50; background: var(--good);
 }
+.toast svg { flex: 0 0 auto; }
 .toast.err { background: var(--danger); }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 

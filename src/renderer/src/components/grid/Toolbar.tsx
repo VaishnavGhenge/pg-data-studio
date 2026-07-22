@@ -39,7 +39,7 @@ export function Toolbar({
     if (!previewSql) return;
     try {
       await navigator.clipboard.writeText(previewSql);
-      toast("✓ Copied query");
+      toast("Copied query");
     } catch (e) {
       toast(e instanceof Error ? e.message : "Couldn't copy to clipboard", true);
     }
