@@ -199,10 +199,26 @@ body.col-resizing { cursor: col-resize; user-select: none; }
 .nrow.open > .chev { transform: rotate(90deg); }
 .nrow .chev.leaf { visibility: hidden; }
 .nrow .nic { flex: 0 0 auto; display: inline-flex; color: var(--text-faint); }
-.nrow .nlabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* flex-shrink:1 alone doesn't truncate nowrap text — a flex item's default
+   min-width is `auto`, i.e. never smaller than its own content, regardless
+   of overflow/ellipsis. min-width:0 is what actually lets it shrink. The name
+   should be the last thing to give up space, so it also gets flex-grow:1 to
+   claim any room going spare. */
+.nrow .nlabel {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  flex: 1 1 auto; min-width: 24px;
+}
 .nrow.source .nlabel { font-weight: 600; color: var(--text); }
 .nrow .nmeta { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--text-faint); flex: 0 0 auto; }
-.nrow .ntype { font-family: var(--mono); font-size: 10.5px; color: var(--text-faint); margin-left: 6px; flex: 0 0 auto; }
+/* The data type is the first thing to shrink (flex-shrink:5, vs. the name's
+   1) and is capped at half the row so a long type (e.g.
+   "character varying(255)") can never crowd the name out entirely — it
+   truncates instead. */
+.nrow .ntype {
+  font-family: var(--mono); font-size: 10.5px; color: var(--text-faint); margin-left: 6px;
+  flex: 0 5 auto; min-width: 0; max-width: 50%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .nrow .pkmini { color: var(--pk); margin-left: 4px; flex: 0 0 auto; display: inline-flex; }
 .nrow .ndot {
   margin-left: auto; width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto;
