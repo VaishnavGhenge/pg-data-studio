@@ -41,6 +41,7 @@ export function Toolbar({
         value={quickFilter}
         onChange={(e) => onQuickFilterChange(e.target.value)}
       />
+      <div className="toolbar-divider" />
       <Pager
         offset={offset}
         loadedRowCount={loadedRowCount}
@@ -51,6 +52,7 @@ export function Toolbar({
       <div className="meta">
         <b>{visibleRowCount}</b> rows · <b>{ms}</b> ms
       </div>
+      <div className="toolbar-divider" />
       <button className="btn ghost" disabled={dirtyCount === 0} onClick={onRevert}>
         Revert
       </button>

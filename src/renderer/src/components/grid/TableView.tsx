@@ -64,7 +64,7 @@ export function TableView() {
         onSave={save}
         onRevert={revertAll}
       />
-      <WhereBar appliedWhere={state.where} onApply={applyWhere} />
+      <WhereBar appliedWhere={state.where} columns={state.columns} onApply={applyWhere} />
       <div className="grid-scroll">
         {state.current ? (
           <GridTable key={resultKey} rows={visibleRows} />

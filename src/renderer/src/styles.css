@@ -191,12 +191,15 @@ body.col-resizing { cursor: col-resize; user-select: none; }
 .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--editor); }
 
 .toolbar {
-  display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+  display: flex; align-items: center; gap: 8px; padding: 7px 12px;
   border-bottom: 1px solid var(--border); flex: 0 0 auto; flex-wrap: wrap;
 }
+/* Short vertical rules split the toolbar into clusters (output / filter+page /
+   actions) instead of one flat row of identically-weighted pills. */
+.toolbar-divider { width: 1px; height: 20px; background: var(--border-strong); flex: 0 0 auto; }
 .sql {
   font-family: var(--mono); font-size: 12px; color: var(--text-dim);
-  background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px;
+  background: var(--panel-2); border-radius: 6px;
   padding: 5px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   flex: 1 1 220px; min-width: 0;
 }
@@ -209,19 +212,27 @@ body.col-resizing { cursor: col-resize; user-select: none; }
 .filter::placeholder { color: var(--text-faint); }
 .meta { font-family: var(--mono); font-size: 11.5px; color: var(--text-faint); white-space: nowrap; }
 .meta b { color: var(--text-dim); font-weight: 600; }
+.toolbar .btn.ghost { border-color: transparent; }
+.toolbar .btn.ghost:hover { background: var(--panel-2); border-color: transparent; }
+.toolbar .btn.primary:not(:disabled) { box-shadow: 0 1px 3px rgba(20, 30, 50, 0.22); }
 
-/* ---- pager ---- */
-.pager { display: flex; align-items: center; gap: 4px; }
+/* ---- pager: one cohesive segmented control, not three loose boxes ---- */
+.pager {
+  display: flex; align-items: stretch; border: 1px solid var(--border);
+  border-radius: 6px; overflow: hidden; flex: 0 0 auto;
+}
 .pager-btn {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 24px; height: 24px; padding: 0; background: var(--editor);
-  border: 1px solid var(--border); border-radius: 6px; color: var(--text-dim); cursor: pointer;
+  width: 26px; padding: 0; background: var(--editor);
+  border: none; color: var(--text-dim); cursor: pointer;
 }
-.pager-btn:hover:not(:disabled) { color: var(--text); border-color: var(--text-faint); }
+.pager-btn:hover:not(:disabled) { color: var(--text); background: var(--panel-2); }
 .pager-btn:disabled { opacity: 0.4; cursor: default; }
 .pager-range {
   font-family: var(--mono); font-size: 11.5px; color: var(--text-dim);
-  min-width: 62px; text-align: center; white-space: nowrap; user-select: none;
+  min-width: 58px; padding: 0 8px; display: flex; align-items: center; justify-content: center;
+  white-space: nowrap; user-select: none; background: var(--panel-2);
+  border-left: 1px solid var(--border); border-right: 1px solid var(--border);
 }
 
 /* ---- WHERE bar ---- */
@@ -230,17 +241,35 @@ body.col-resizing { cursor: col-resize; user-select: none; }
   background: var(--panel); border-bottom: 1px solid var(--border); flex: 0 0 auto;
 }
 .wherebar-kw {
-  font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
-  color: var(--text-faint); user-select: none; flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; color: var(--accent); background: var(--accent-soft);
+  border-radius: 5px; flex: 0 0 auto;
 }
+.wherebar-input-wrap { position: relative; flex: 1 1 auto; min-width: 0; }
 .wherebar-input {
   font: inherit; font-family: var(--mono); font-size: 12px; color: var(--text);
   background: var(--editor); border: 1px solid var(--border); border-radius: 6px;
-  padding: 5px 10px; flex: 1 1 auto; min-width: 0;
+  padding: 5px 10px; width: 100%;
 }
 .wherebar-input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
 .wherebar-input::placeholder { color: var(--text-faint); }
 .wherebar-input.active { border-color: var(--accent); background: var(--accent-soft); }
+.wherebar-hint {
+  font-family: var(--mono); font-size: 10.5px; color: var(--text-faint);
+  white-space: nowrap; flex: 0 0 auto; user-select: none;
+}
+/* ---- WHERE bar column-name suggestions ---- */
+.wherebar-suggest {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 55;
+  min-width: 160px; max-width: 320px; max-height: 220px; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--border-strong); border-radius: 8px;
+  box-shadow: var(--shadow); padding: 4px;
+}
+.wherebar-suggest-item {
+  font-family: var(--mono); font-size: 12px; color: var(--text-dim);
+  padding: 5px 9px; border-radius: 5px; cursor: pointer; white-space: nowrap;
+}
+.wherebar-suggest-item.active, .wherebar-suggest-item:hover { background: var(--sel); color: var(--text); }
 .wherebar-clear {
   flex: 0 0 auto; width: 22px; height: 22px; padding: 0; font-size: 15px; line-height: 1;
   background: transparent; border: 1px solid var(--border-strong); border-radius: 6px;

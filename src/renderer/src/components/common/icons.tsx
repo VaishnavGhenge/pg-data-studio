@@ -101,6 +101,20 @@ export function KeyIcon({ size = 11 }: IconProps) {
   );
 }
 
+export function CodeIcon({ size = 14 }: IconProps) {
+  return (
+    <Lucide
+      size={size}
+      path={
+        <>
+          <path d="m16 18 6-6-6-6" />
+          <path d="m8 6-6 6 6 6" />
+        </>
+      }
+    />
+  );
+}
+
 export function PencilIcon({ size = 18 }: IconProps) {
   return (
     <Lucide
