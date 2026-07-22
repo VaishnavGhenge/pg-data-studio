@@ -42,6 +42,16 @@ function buildUrl(f: FormFields): string {
   return `postgres://${cred}${f.host}${port}/${encodeURIComponent(f.database)}${q}`;
 }
 
+// Masks the password segment of a postgres:// URL for display (the
+// dedicated Password field already hides it; the URL field was showing it
+// right back in plain text). Only cosmetic — the real password stays in
+// component state and is never derived from this masked string.
+function maskUrlPassword(raw: string): string {
+  return raw.replace(/^(postgres(?:ql)?:\/\/[^:/@]*:)([^@]*)(@)/, (_m, pre, pass, at) =>
+    pre + (pass ? "•".repeat(Math.min(pass.length, 10)) : "") + at
+  );
+}
+
 // Best-effort parse of the URL field back into structured fields; returns
 // null (leaving fields untouched) for anything that isn't a postgres URL.
 function parseUrl(raw: string): Partial<FormFields> | null {
@@ -107,6 +117,7 @@ export function SourceModal({ open, source, onClose }: SourceModalProps) {
 function SourceModalForm({ source, onClose }: { source: Source | null; onClose: () => void }) {
   const [fields, setFields] = useState<FormFields>(() => fieldsFromSource(source));
   const [url, setUrl] = useState(() => buildUrl(fieldsFromSource(source)));
+  const [urlFocused, setUrlFocused] = useState(false);
   const [formError, setFormError] = useState("");
   const [testResult, setTestResult] = useState<{ text: string; ok: boolean } | null>(null);
   const [connecting, setConnecting] = useState(false);
@@ -293,18 +304,21 @@ function SourceModalForm({ source, onClose }: { source: Source | null; onClose: 
           <span>Use SSL</span>
         </label>
 
-        <label className="field-label" htmlFor="srcUrl">
-          URL <span className="hint">— edit to fill the fields above</span>
-        </label>
+        <div className="url-divider">or paste a URL</div>
         <input
           className="field url"
           id="srcUrl"
           spellCheck={false}
           autoComplete="off"
+          aria-label="Connection URL — fills the fields above"
           placeholder="postgres://user:password@localhost:5432/dbname"
-          value={url}
+          value={urlFocused ? url : maskUrlPassword(url)}
           onChange={(e) => setUrl(e.target.value)}
-          onBlur={commitUrl}
+          onFocus={() => setUrlFocused(true)}
+          onBlur={() => {
+            setUrlFocused(false);
+            commitUrl();
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") handleConnect(commitUrl());
           }}
@@ -314,7 +328,10 @@ function SourceModalForm({ source, onClose }: { source: Source | null; onClose: 
       {formError && <div className="connect-error">{formError}</div>}
 
       <div className="form-actions">
-        <span className={"test-result" + (testResult ? (testResult.ok ? " ok" : " err") : "")}>
+        <span
+          className={"test-result" + (testResult ? (testResult.ok ? " ok" : " err") : "")}
+          title={testResult?.text}
+        >
           {testing ? "Testing…" : (testResult?.text ?? "")}
         </span>
         <span className="spacer" />
@@ -323,6 +340,9 @@ function SourceModalForm({ source, onClose }: { source: Source | null; onClose: 
         </button>
         <button className="btn ghost" onClick={() => handleSave()}>
           Save
+        </button>
+        <button className="btn ghost" onClick={onClose}>
+          Cancel
         </button>
         <button className="btn primary" disabled={connecting} onClick={() => handleConnect()}>
           {connecting ? "Connecting…" : "Connect"}

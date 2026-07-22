@@ -62,6 +62,23 @@ function createWindow(): void {
 // ---- IPC: every handler resolves to { ok, data } or { ok: false, error } so the
 // renderer has a single, predictable shape to branch on. ----
 
+// Node's connect() tries every resolved address for a host (IPv4 + IPv6) and,
+// if all of them fail, throws an AggregateError whose own .message is empty —
+// the real per-address reasons (e.g. "connect ECONNREFUSED 127.0.0.1:5432")
+// only live in .errors[]. This is exactly what happens connecting to
+// "localhost" when nothing's listening, so without unwrapping it the
+// renderer would show a blank error message.
+function errorMessage(err: unknown): string {
+  if (err instanceof AggregateError && err.errors.length) {
+    const sub = err.errors
+      .map((e) => (e instanceof Error ? e.message : String(e)))
+      .filter(Boolean);
+    if (sub.length) return sub.join("; ");
+  }
+  if (err instanceof Error) return err.message || err.name;
+  return String(err);
+}
+
 function handle<T>(
   channel: string,
   fn: (...args: any[]) => Promise<T>
@@ -70,8 +87,7 @@ function handle<T>(
     try {
       return { ok: true, data: await fn(...args) };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { ok: false, error: message };
+      return { ok: false, error: errorMessage(err) };
     }
   });
 }

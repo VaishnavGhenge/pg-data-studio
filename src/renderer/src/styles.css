@@ -79,7 +79,6 @@ body {
   color: var(--text-faint); margin-top: 8px;
 }
 .form-row .field-label { margin-top: 0; }
-.field-label .hint { text-transform: none; letter-spacing: 0; color: var(--text-faint); font-weight: 400; }
 .field {
   font: inherit; font-family: var(--mono); font-size: 12.5px; color: var(--text);
   background: var(--editor); border: 1px solid var(--border); border-radius: 8px;
@@ -92,7 +91,29 @@ body {
   display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12.5px;
   color: var(--text-dim); cursor: pointer; user-select: none;
 }
-.checkbox-row input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+/* Custom checkbox: appearance:none strips the browser's own widget (a plain
+   white box in most themes, clashing with the dark UI) so it can be themed
+   like everything else; the checkmark is drawn with a rotated border, the
+   classic CSS-only tick. */
+.checkbox-row input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none; margin: 0; position: relative;
+  width: 15px; height: 15px; flex: 0 0 auto; cursor: pointer;
+  background: var(--editor); border: 1.5px solid var(--border-strong); border-radius: 4px;
+  transition: background 0.1s, border-color 0.1s;
+}
+.checkbox-row input[type="checkbox"]:hover { border-color: var(--text-faint); }
+.checkbox-row input[type="checkbox"]:checked { background: var(--accent); border-color: var(--accent); }
+.checkbox-row input[type="checkbox"]:checked::after {
+  content: ""; position: absolute; left: 4px; top: 1px; width: 4px; height: 8px;
+  border: solid #fff; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg);
+}
+.checkbox-row input[type="checkbox"]:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 2px; }
+
+.url-divider {
+  display: flex; align-items: center; gap: 8px; margin: 6px 0 2px;
+  color: var(--text-faint); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase;
+}
+.url-divider::before, .url-divider::after { content: ""; flex: 1 1 auto; height: 1px; background: var(--border); }
 
 .connect-error {
   font-family: var(--mono); font-size: 11.5px; color: var(--danger);
@@ -102,9 +123,14 @@ body {
 .form-actions .spacer { margin-left: auto; }
 .btn.danger { color: var(--danger); border-color: var(--danger); }
 .btn.danger:hover { background: var(--danger-soft); color: var(--danger); }
-.test-result { font-family: var(--mono); font-size: 11.5px; color: var(--text-faint); }
-.test-result.ok { color: var(--good); }
-.test-result.err { color: var(--danger); }
+.test-result {
+  font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--text-faint);
+  padding: 5px 9px; border-radius: 6px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto;
+}
+.test-result:empty { padding: 0; }
+.test-result.ok { color: var(--good); background: var(--good-soft); }
+.test-result.err { color: var(--danger); background: var(--danger-soft); }
 .connect-note { margin: 2px 0 0; font-size: 11px; color: var(--text-faint); }
 .connect-note code { font-family: var(--mono); }
 
@@ -354,14 +380,23 @@ tbody td {
 tbody tr:nth-child(even) td { background: var(--row-alt); }
 tbody tr.dirty-row td { background: var(--dirty-soft); }
 tbody tr:hover td { background: var(--sel); }
+/* The specific cell under the cursor, not just its row — !important so it
+   reads clearly against the row's own hover tint above (same problem the
+   comment below solves for .selected: a border-only ring blended into a
+   same-hue background and was easy to miss). */
+tbody td:hover { background: var(--panel-2) !important; }
 .cell { padding: 5px 12px; min-height: 28px; display: block; outline: none; max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
 td.editable:hover .cell { box-shadow: inset 0 0 0 1px var(--border-strong); }
-td.dirty { background: var(--dirty-soft) !important; }
+/* `tbody` prefix matches tbody td:hover's specificity (both 0,1,2) so these
+   still win — by source order — when a dirty/selected cell is also hovered;
+   plain `td.dirty`/`td.selected` (0,1,1) would otherwise lose to the hover
+   rule's higher specificity despite both being !important. */
+tbody td.dirty { background: var(--dirty-soft) !important; }
 td.dirty .cell { box-shadow: inset 2px 0 0 var(--dirty); }
 /* !important to win over tbody tr:hover — a border-only ring was easy to
    miss against the row's own hover tint (same accent hue), so the selected
    cell looked unhighlighted until the mouse moved off that row. */
-td.selected { background: var(--accent-soft) !important; }
+tbody td.selected { background: var(--accent-soft) !important; }
 td.selected .cell { box-shadow: inset 0 0 0 2px var(--accent); }
 .cell:focus { box-shadow: inset 0 0 0 2px var(--accent); background: var(--editor); white-space: normal; overflow: visible; }
 /* The actively-edited cell renders a real <input> in place of the <span> —
@@ -372,7 +407,10 @@ input.cell-input {
 .nullv { color: var(--text-faint); font-style: italic; }
 td.pkcell .cell { color: var(--pk); }
 td.num .cell { text-align: right; }
-.gutter {
+/* tbody prefix for the same specificity-vs-tbody-td:hover reason as
+   .dirty/.selected above — the gutter is a static row number, not meant to
+   look hoverable. */
+tbody .gutter {
   width: 40px; min-width: 40px; text-align: center; color: var(--text-faint); font-size: 10.5px;
   background: var(--panel) !important; user-select: none; border-right: 1px solid var(--border-strong);
 }
