@@ -40,6 +40,10 @@
    (.app, .connect, .pager, .filter-pop, .empty all set display). */
 [hidden] { display: none !important; }
 html, body { height: 100%; }
+/* React's mount point sits between <body> and the app's top-level elements;
+   `display: contents` makes it layout-invisible so .titlebar/.app are still
+   effectively direct flex children of body, exactly as before React. */
+#root { display: contents; }
 body {
   margin: 0; background: var(--bg); color: var(--text);
   font-family: var(--ui); font-size: 13px; line-height: 1.45;
@@ -310,6 +314,11 @@ td.dirty { background: var(--dirty-soft) !important; }
 td.dirty .cell { box-shadow: inset 2px 0 0 var(--dirty); }
 td.selected .cell { box-shadow: inset 0 0 0 2px var(--accent); }
 .cell:focus { box-shadow: inset 0 0 0 2px var(--accent); background: var(--editor); white-space: normal; overflow: visible; }
+/* The actively-edited cell renders a real <input> in place of the <span> —
+   reset its UA styling so it's visually identical to the static cell. */
+input.cell-input {
+  font: inherit; color: inherit; background: var(--editor); border: none; outline: none; width: 100%;
+}
 .nullv { color: var(--text-faint); font-style: italic; }
 td.pkcell .cell { color: var(--pk); }
 td.num .cell { text-align: right; }
