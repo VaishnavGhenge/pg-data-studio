@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, ipcMain, session, shell } from "electron";
 import * as path from "path";
 import * as db from "./db";
 import * as store from "./store";
@@ -6,6 +6,24 @@ import * as store from "./store";
 app.setName("PG Data Studio");
 
 let mainWindow: BrowserWindow | null = null;
+
+// The renderer has no inline scripts/eval and loads nothing external — CSP is
+// set here rather than a static <meta> tag so it can be strict in production
+// while staying relaxed enough for the Vite dev server's HMR websocket and
+// React Fast Refresh's inline preamble during `electron-vite dev`.
+function installCsp(): void {
+  const csp = app.isPackaged
+    ? "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:;"
+    : "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: ws: http://localhost:*;";
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        "Content-Security-Policy": [csp],
+      },
+    });
+  });
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -24,7 +42,11 @@ function createWindow(): void {
     },
   });
 
-  mainWindow.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
+  if (process.env.ELECTRON_RENDERER_URL) {
+    mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL); // electron-vite dev server
+  } else {
+    mainWindow.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
+  }
 
   // Open target=_blank / external links in the OS browser, never in-app.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -106,6 +128,7 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
+    installCsp();
     createWindow();
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

@@ -1,9 +1,12 @@
 // Renderer: pure UI. Every bit of data comes from `window.api` (see preload).
 // There is no database code here and no Node access — this process is sandboxed.
 //
-// This file has no imports/exports on purpose: it stays a global script so the
-// compiled output is plain browser JS (no require/exports). Types come from the
-// ambient declarations in src/shared/types.d.ts.
+// Transitional: this is the pre-React vanilla renderer, kept as-is while the
+// build moves to electron-vite. It's being replaced component-by-component by
+// a React rewrite (see the plan) and will be deleted once that's done. Types
+// come from the ambient declarations in src/shared/types.d.ts.
+
+import "./styles.css";
 
 (function () {
   const $ = (id: string): HTMLElement => document.getElementById(id)!;

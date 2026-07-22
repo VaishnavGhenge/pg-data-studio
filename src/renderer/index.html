@@ -2,12 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:;"
-    />
+    <!-- CSP is enforced by the main process (session.webRequest.onHeadersReceived),
+         strict in production and relaxed for the Vite dev server/HMR — see src/main/index.ts. -->
     <title>PG Data Studio</title>
-    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <!-- draggable titlebar strip (macOS hiddenInset) -->
@@ -205,6 +202,6 @@
       </div>
     </div>
 
-    <script src="app.js"></script>
+    <script type="module" src="/src/app.ts"></script>
   </body>
 </html>
