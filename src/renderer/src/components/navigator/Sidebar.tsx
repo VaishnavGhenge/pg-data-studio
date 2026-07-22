@@ -1,4 +1,4 @@
-import { useState, type RefObject } from "react";
+import { useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { NavigatorTree } from "./NavigatorTree";
 import { SourceContextMenu } from "./SourceContextMenu";
 import { useSourceActions } from "../../hooks/useSourceActions";
@@ -20,6 +20,28 @@ export function Sidebar({ sideRef, onOpenTable, onNewSource, onEditSource }: Sid
   const [refreshSignal, setRefreshSignal] = useState(0);
   const { connectedId } = useSourcesState();
   const { disconnect, deleteSource, duplicateSource } = useSourceActions();
+  const filterInputRef = useRef<HTMLInputElement>(null);
+  const treeRegionRef = useRef<HTMLDivElement>(null);
+
+  // Type-to-search: typing anywhere in the table list (not already in the
+  // filter box itself) routes the keystroke there instead of doing nothing,
+  // matching Finder/VS Code sidebar behavior. Only meaningful once a source
+  // is connected — with nothing to search, a keystroke here plays the OS
+  // "that shortcut isn't bound to anything" alert sound instead, the same
+  // way macOS itself responds to an unassigned key combo.
+  function handleTreeKeyDown(e: KeyboardEvent<HTMLDivElement>): void {
+    const target = e.target as HTMLElement;
+    if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
+    if (e.metaKey || e.ctrlKey || e.altKey || e.key.length !== 1) return;
+
+    e.preventDefault();
+    if (!connectedId) {
+      window.api.beep();
+      return;
+    }
+    setFilterRaw((prev) => prev + e.key);
+    filterInputRef.current?.focus();
+  }
 
   return (
     <aside className="side" ref={sideRef}>
@@ -38,6 +60,7 @@ export function Sidebar({ sideRef, onOpenTable, onNewSource, onEditSource }: Sid
       </div>
       <div className="tree-filter">
         <input
+          ref={filterInputRef}
           className="tree-filter-input"
           spellCheck={false}
           autoComplete="off"
@@ -47,12 +70,20 @@ export function Sidebar({ sideRef, onOpenTable, onNewSource, onEditSource }: Sid
           onChange={(e) => setFilterRaw(e.target.value)}
         />
       </div>
-      <NavigatorTree
-        filter={filterRaw.trim()}
-        refreshSignal={refreshSignal}
-        onOpenTable={onOpenTable}
-        onSourceContextMenu={(id, x, y) => setCtxMenu({ id, x, y })}
-      />
+      <div
+        ref={treeRegionRef}
+        className="tree-focus-region"
+        tabIndex={-1}
+        onMouseDown={() => treeRegionRef.current?.focus()}
+        onKeyDown={handleTreeKeyDown}
+      >
+        <NavigatorTree
+          filter={filterRaw.trim()}
+          refreshSignal={refreshSignal}
+          onOpenTable={onOpenTable}
+          onSourceContextMenu={(id, x, y) => setCtxMenu({ id, x, y })}
+        />
+      </div>
       {ctxMenu && (
         <SourceContextMenu
           sourceId={ctxMenu.id}

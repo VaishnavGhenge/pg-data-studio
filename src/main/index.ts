@@ -130,6 +130,15 @@ handle<boolean>("store:delete", async (id: string) => {
   return true;
 });
 
+// The OS "that shortcut/action isn't available right now" alert sound (the
+// renderer plays this for type-to-search keystrokes with no source
+// connected) — shell.beep() is main-process only, not exposed to a
+// sandboxed renderer directly.
+handle<boolean>("app:beep", async () => {
+  shell.beep();
+  return true;
+});
+
 // ---- app lifecycle ----
 
 const gotLock = app.requestSingleInstanceLock();

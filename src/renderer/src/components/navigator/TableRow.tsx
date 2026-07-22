@@ -8,6 +8,7 @@ interface TableRowProps {
   table: TableInfo;
   open: boolean;
   active: boolean;
+  matchQuery: string;
   onOpenTable: () => void;
   onToggleColumns: () => void;
   children?: ReactNode;
@@ -18,6 +19,7 @@ export function TableRow({
   table,
   open,
   active,
+  matchQuery,
   onOpenTable,
   onToggleColumns,
   children,
@@ -29,6 +31,7 @@ export function TableRow({
         depth={2}
         icon={<TableIcon size={14} />}
         label={table.name}
+        matchQuery={matchQuery}
         open={open}
         active={active}
         title={`${schema}.${table.name}`}

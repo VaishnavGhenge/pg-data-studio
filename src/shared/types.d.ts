@@ -119,6 +119,7 @@ interface Api {
   listSources(): Promise<IpcResult<Source[]>>;
   saveSource(source: Source): Promise<IpcResult<Source>>;
   deleteSource(id: string): Promise<IpcResult<boolean>>;
+  beep(): Promise<IpcResult<boolean>>;
 }
 
 interface Window {

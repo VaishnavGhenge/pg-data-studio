@@ -20,6 +20,7 @@ const api: Api = {
   listSources: () => invoke<Source[]>("store:list"),
   saveSource: (source) => invoke<Source>("store:save", source),
   deleteSource: (id) => invoke<boolean>("store:delete", id),
+  beep: () => invoke<boolean>("app:beep"),
 };
 
 contextBridge.exposeInMainWorld("api", api);

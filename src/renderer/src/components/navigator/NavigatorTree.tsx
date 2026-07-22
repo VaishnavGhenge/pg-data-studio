@@ -233,6 +233,7 @@ export function NavigatorTree({
           table={t}
           open={open}
           active={active}
+          matchQuery={q}
           onOpenTable={() => onOpenTable(schema, t.name)}
           onToggleColumns={() => toggleTable(schema, t.name)}
         >
