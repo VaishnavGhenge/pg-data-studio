@@ -48,7 +48,9 @@ export function Toolbar({
   return (
     <div className="toolbar">
       <div className="sql-wrap">
-        <div className="sql">{previewSql}</div>
+        <div className={previewSql ? "sql" : "sql sql-empty"}>
+          {previewSql || "No query yet — select a table"}
+        </div>
         {previewSql && (
           <button className="sql-copy" title="Copy query" aria-label="Copy query" onClick={copySql}>
             <CopyIcon size={12} />
