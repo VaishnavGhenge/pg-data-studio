@@ -37,7 +37,7 @@
 
 * { box-sizing: border-box; }
 /* The `hidden` attribute must win over any element's own `display` rule
-   (.app, .connect, .pending, .pager, .filter-pop, .empty all set display). */
+   (.app, .connect, .pager, .filter-pop, .empty all set display). */
 [hidden] { display: none !important; }
 html, body { height: 100%; }
 body {
@@ -308,6 +308,7 @@ tbody tr:hover td { background: var(--sel); }
 td.editable:hover .cell { box-shadow: inset 0 0 0 1px var(--border-strong); }
 td.dirty { background: var(--dirty-soft) !important; }
 td.dirty .cell { box-shadow: inset 2px 0 0 var(--dirty); }
+td.selected .cell { box-shadow: inset 0 0 0 2px var(--accent); }
 .cell:focus { box-shadow: inset 0 0 0 2px var(--accent); background: var(--editor); white-space: normal; overflow: visible; }
 .nullv { color: var(--text-faint); font-style: italic; }
 td.pkcell .cell { color: var(--pk); }
@@ -315,26 +316,6 @@ td.num .cell { text-align: right; }
 .gutter {
   width: 40px; min-width: 40px; text-align: center; color: var(--text-faint); font-size: 10.5px;
   background: var(--panel) !important; user-select: none; border-right: 1px solid var(--border-strong);
-}
-
-/* ---- pending changes ---- */
-.pending {
-  flex: 0 0 auto; border-top: 1px solid var(--border-strong); background: var(--panel);
-  max-height: 0; overflow: hidden; transition: max-height 0.22s ease;
-}
-.pending.open { max-height: 260px; }
-.pending-head { display: flex; align-items: center; gap: 10px; padding: 9px 12px; }
-.pending-head .badge {
-  background: var(--dirty-soft); color: var(--dirty); border: 1px solid var(--dirty);
-  border-radius: 20px; font-size: 11px; font-weight: 600; padding: 2px 9px; font-family: var(--mono);
-}
-.pending-head .lbl { color: var(--text-dim); font-size: 12px; }
-.pending-head .lbl b { font-weight: 600; }
-.pending-head .spacer { margin-left: auto; }
-.stmts { font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); padding: 0 12px 12px; overflow: auto; max-height: 150px; }
-.stmt {
-  padding: 5px 10px; background: var(--editor); border: 1px solid var(--border);
-  border-radius: 5px; margin-bottom: 6px; white-space: pre; overflow-x: auto;
 }
 
 /* ---- source modal ---- */
@@ -351,6 +332,17 @@ td.num .cell { text-align: right; }
 .modal-head h2 { margin: 0; font-size: 15.5px; font-weight: 650; color: var(--text); letter-spacing: -0.01em; }
 .modal-head .icon-btn { margin-left: auto; color: var(--text-faint); }
 .modal-icon { flex: 0 0 auto; }
+
+/* ---- confirm dialog ---- */
+.modal.confirm { width: 420px; gap: 14px; padding: 22px 24px 18px; }
+.confirm-title { margin: 0; font-size: 15px; font-weight: 650; color: var(--text); letter-spacing: -0.01em; }
+.confirm-body { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-dim); }
+.confirm-body:empty { display: none; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 2px; }
+.confirm-actions .btn { min-width: 84px; text-align: center; }
+.modal.confirm.danger .btn.primary {
+  background: var(--danger); border-color: var(--danger); color: #fff;
+}
 
 /* ---- cell value editor ---- */
 .cell-editor { width: 640px; }

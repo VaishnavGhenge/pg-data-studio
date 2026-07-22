@@ -49,6 +49,8 @@
             </button>
           </div>
           <div class="meta"><b id="rowcount">0</b> rows · <b id="ms">0</b> ms</div>
+          <button class="btn ghost" id="revert" disabled>Revert</button>
+          <button class="btn primary" id="save" disabled>Save changes</button>
         </div>
 
         <div class="wherebar" id="wherebar">
@@ -71,21 +73,22 @@
           </table>
           <div class="empty" id="empty">Select a table to view its data.</div>
         </div>
-
-        <div class="pending" id="pending">
-          <div class="pending-head">
-            <span class="badge" id="pcount">0 changes</span>
-            <span class="lbl" id="pendingLbl"></span>
-            <span class="spacer"></span>
-            <button class="btn ghost" id="revert">Revert</button>
-            <button class="btn primary" id="save">Save changes</button>
-          </div>
-          <div class="stmts" id="stmts"></div>
-        </div>
       </section>
     </div>
 
     <div class="toast" id="toast"></div>
+
+    <!-- confirm dialog -->
+    <div class="modal-backdrop" id="confirmModal" hidden>
+      <div class="modal confirm" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmBody">
+        <h2 class="confirm-title" id="confirmTitle"></h2>
+        <p class="confirm-body" id="confirmBody"></p>
+        <div class="confirm-actions">
+          <button class="btn ghost" id="confirmCancel">Cancel</button>
+          <button class="btn primary" id="confirmOk">OK</button>
+        </div>
+      </div>
+    </div>
 
     <!-- source add/edit modal -->
     <div class="modal-backdrop" id="sourceModal" hidden>

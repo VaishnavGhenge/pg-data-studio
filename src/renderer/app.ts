@@ -8,6 +8,7 @@
 (function () {
   const $ = (id: string): HTMLElement => document.getElementById(id)!;
   const asInput = (id: string): HTMLInputElement => $(id) as HTMLInputElement;
+  const asBtn = (id: string): HTMLButtonElement => $(id) as HTMLButtonElement;
   const asSelect = (id: string): HTMLSelectElement => $(id) as HTMLSelectElement;
 
   interface DirtyEntry {
@@ -297,7 +298,7 @@
 
   // Connect to a source, switching away from any currently-active one.
   async function connectSource(src: Source): Promise<void> {
-    if (Object.keys(state.dirty).length && !confirmDiscard()) return;
+    if (Object.keys(state.dirty).length && !(await confirmDiscard())) return;
     nav.busyId = src.id;
     nav.errorId = null;
     renderNav();
@@ -323,7 +324,7 @@
   }
 
   async function doDisconnect(): Promise<void> {
-    if (Object.keys(state.dirty).length && !confirmDiscard()) return;
+    if (Object.keys(state.dirty).length && !(await confirmDiscard())) return;
     await window.api.disconnect();
     nav.connectedId = null;
     nav.errorId = null;
@@ -367,7 +368,7 @@
 
   // ---------- open a table into the grid ----------
   async function openTable(schema: string, table: string): Promise<void> {
-    if (Object.keys(state.dirty).length && !confirmDiscard()) return;
+    if (Object.keys(state.dirty).length && !(await confirmDiscard())) return;
     state.current = { schema, name: table };
     state.sortCol = null;
     state.sortDir = "asc";
@@ -546,7 +547,13 @@
   async function deleteSourceById(id: string): Promise<void> {
     const src = sources.find((s) => s.id === id);
     if (!src) return;
-    if (!window.confirm(`Delete data source "${src.name}"?`)) return;
+    const ok = await confirmModal({
+      title: `Delete "${src.name}"?`,
+      body: "This removes the saved connection. It won't touch the database itself.",
+      okLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
     if (nav.connectedId === id) await doDisconnect();
     await window.api.deleteSource(id);
     sources = await safe(window.api.listSources(), []);
@@ -661,7 +668,7 @@
   async function goToPage(delta: number): Promise<void> {
     const next = Math.max(state.offset + delta * PAGE_SIZE, 0);
     if (next === state.offset) return;
-    if (Object.keys(state.dirty).length && !confirmDiscard()) return;
+    if (Object.keys(state.dirty).length && !(await confirmDiscard())) return;
     state.offset = next;
     state.dirty = {};
     await query();
@@ -671,7 +678,7 @@
   async function applyWhere(): Promise<void> {
     const next = asInput("where").value.trim();
     if (next === state.where) return;
-    if (Object.keys(state.dirty).length && !confirmDiscard()) return;
+    if (Object.keys(state.dirty).length && !(await confirmDiscard())) return;
     state.where = next;
     state.offset = 0; // a new predicate changes the result set; start at page 1
     state.dirty = {};
@@ -750,7 +757,7 @@
     $("filterPop").hidden = true;
   }
 
-  function applyColFilter(): void {
+  async function applyColFilter(): Promise<void> {
     if (!popCol) return;
     const col = popCol;
     const op = asSelect("fpOp").value as FilterOp;
@@ -764,7 +771,7 @@
     if (!willClear && cur && cur.op === op && (noVal || cur.value === raw)) {
       return closeFilterPop();
     }
-    if (Object.keys(state.dirty).length && !confirmDiscard()) return;
+    if (Object.keys(state.dirty).length && !(await confirmDiscard())) return;
 
     if (willClear) delete state.colFilters[col];
     else state.colFilters[col] = { op, value: noVal ? "" : raw };
@@ -774,9 +781,9 @@
     query();
   }
 
-  function clearColFilter(): void {
+  async function clearColFilter(): Promise<void> {
     if (popCol && state.colFilters[popCol]) {
-      if (Object.keys(state.dirty).length && !confirmDiscard()) return;
+      if (Object.keys(state.dirty).length && !(await confirmDiscard())) return;
       delete state.colFilters[popCol];
       state.offset = 0;
       state.dirty = {};
@@ -833,9 +840,9 @@
       });
     });
     $("thead").querySelectorAll<HTMLElement>("th[data-col]").forEach((th) => {
-      th.addEventListener("click", () => {
+      th.addEventListener("click", async () => {
         const col = th.dataset.col!;
-        if (Object.keys(state.dirty).length && !confirmDiscard()) return;
+        if (Object.keys(state.dirty).length && !(await confirmDiscard())) return;
         if (state.sortCol === col) {
           state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
         } else {
@@ -868,10 +875,9 @@
           c.isPk ? "pkcell" : editable ? "editable" : "",
           d ? "dirty" : "",
         ].join(" ").trim();
-        const ce = !c.isPk && editable ? ' contenteditable="true"' : "";
         b +=
           '<td class="' + cls + '" data-rk="' + esc(rk) + '" data-col="' + esc(c.name) + '">' +
-          '<span class="cell"' + ce + ' spellcheck="false">' + display + "</span></td>";
+          '<span class="cell" spellcheck="false">' + display + "</span></td>";
       });
       b += "</tr>";
     });
@@ -881,9 +887,42 @@
     renderPending();
   }
 
+  // The cell the user has single-click selected (highlighted, not yet editing).
+  let selectedTd: HTMLElement | null = null;
+
+  function selectCell(td: HTMLElement): void {
+    if (selectedTd === td) return;
+    selectedTd?.classList.remove("selected");
+    selectedTd = td;
+    td.classList.add("selected");
+  }
+
+  function startEdit(cell: HTMLElement): void {
+    cell.setAttribute("contenteditable", "true");
+    cell.focus();
+  }
+
+  function endEdit(cell: HTMLElement): void {
+    cell.removeAttribute("contenteditable");
+  }
+
   function wireCells(): void {
+    selectedTd = null;
     $("tbody").querySelectorAll<HTMLElement>("td.editable .cell").forEach((cell) => {
       const td = cell.parentElement as HTMLElement;
+      // Single click highlights the cell; editing only starts on double click.
+      cell.addEventListener("mousedown", (e) => {
+        if (cell.getAttribute("contenteditable") === "true") return; // already editing this cell
+        e.preventDefault(); // don't drop a caret into the cell yet
+        // preventDefault keeps focus where it is, so a cell mid-edit would never
+        // blur. Commit/reset it explicitly before moving the selection here.
+        const active = document.activeElement as HTMLElement | null;
+        if (active && active !== cell && active.getAttribute("contenteditable") === "true") {
+          active.blur();
+        }
+        selectCell(td);
+      });
+      cell.addEventListener("dblclick", () => startEdit(cell));
       cell.addEventListener("focus", () => {
         if (cell.querySelector(".nullv")) cell.textContent = "";
         requestAnimationFrame(() => {
@@ -906,7 +945,10 @@
           cell.blur();
         }
       });
-      cell.addEventListener("blur", () => commitCell(td, cell));
+      cell.addEventListener("blur", () => {
+        commitCell(td, cell);
+        endEdit(cell);
+      });
     });
   }
 
@@ -1048,31 +1090,13 @@
   }
 
   // ---------- pending changes ----------
+  // Dirty rows are highlighted in-grid; the toolbar Save/Revert buttons just
+  // enable when there is something to write.
   function renderPending(): void {
-    const keys = Object.keys(state.dirty);
-    const bar = $("pending");
-    bar.classList.toggle("open", keys.length > 0);
-    $("pcount").textContent = keys.length + (keys.length === 1 ? " change" : " changes");
-    $("pendingLbl").innerHTML =
-      keys.length && state.current
-        ? "pending on <b>" + esc(state.current.schema + "." + state.current.name) + "</b> — not yet written"
-        : "";
-
-    // Group edits by row, then preview one UPDATE per row.
-    const groups: Record<string, { pkVals: Record<string, Cell>; sets: DirtyEntry[] }> = {};
-    keys.forEach((k) => {
-      const d = state.dirty[k];
-      (groups[d.rowKey] = groups[d.rowKey] || { pkVals: d.pkVals, sets: [] }).sets.push(d);
-    });
-
-    let html = "";
-    Object.values(groups).forEach((g) => {
-      const sets = g.sets.map((d) => qi(d.col) + " = " + lit(d.val)).join(", ");
-      const where = state.pk.map((c) => qi(c) + " = " + lit(g.pkVals[c])).join(" AND ");
-      const ref = qi(state.current!.schema) + "." + qi(state.current!.name);
-      html += '<div class="stmt">UPDATE ' + esc(ref) + " SET " + esc(sets) + "\n  WHERE " + esc(where) + ";</div>";
-    });
-    $("stmts").innerHTML = html;
+    const n = Object.keys(state.dirty).length;
+    (asBtn("save")).disabled = n === 0;
+    (asBtn("revert")).disabled = n === 0;
+    asBtn("save").textContent = n ? "Save " + n + (n === 1 ? " change" : " changes") : "Save changes";
   }
 
   async function save(): Promise<void> {
@@ -1110,13 +1134,6 @@
   }
 
   // ---------- helpers ----------
-  function qi(name: string): string {
-    return '"' + String(name).replace(/"/g, '""') + '"';
-  }
-  function lit(v: Cell): string {
-    if (v === null || v === undefined) return "NULL";
-    return "'" + String(v).replace(/'/g, "''") + "'";
-  }
   function esc(s: string): string {
     return String(s)
       .replace(/&/g, "&amp;")
@@ -1124,8 +1141,42 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
   }
-  function confirmDiscard(): boolean {
-    return window.confirm("You have unsaved changes. Discard them?");
+  // ---------- confirm dialog ----------
+  interface ConfirmOpts {
+    title: string;
+    body?: string;
+    okLabel?: string;
+    cancelLabel?: string;
+    danger?: boolean;
+  }
+  let confirmResolve: ((ok: boolean) => void) | null = null;
+
+  function confirmModal(opts: ConfirmOpts): Promise<boolean> {
+    $("confirmTitle").textContent = opts.title;
+    $("confirmBody").textContent = opts.body ?? "";
+    asBtn("confirmOk").textContent = opts.okLabel ?? "OK";
+    asBtn("confirmCancel").textContent = opts.cancelLabel ?? "Cancel";
+    $("confirmModal").querySelector(".modal")!.classList.toggle("danger", !!opts.danger);
+    $("confirmModal").hidden = false;
+    asBtn("confirmOk").focus();
+    return new Promise((resolve) => (confirmResolve = resolve));
+  }
+
+  function closeConfirm(ok: boolean): void {
+    if (!confirmResolve) return;
+    $("confirmModal").hidden = true;
+    const resolve = confirmResolve;
+    confirmResolve = null;
+    resolve(ok);
+  }
+
+  function confirmDiscard(): Promise<boolean> {
+    return confirmModal({
+      title: "You have unsaved changes",
+      body: "Discard them?",
+      okLabel: "Discard",
+      danger: true,
+    });
   }
   async function safe<T>(promise: Promise<IpcResult<T>>, fallback: T): Promise<T> {
     const res = await promise;
@@ -1143,6 +1194,18 @@
   }
 
   // ---------- wire up ----------
+  // Confirm dialog
+  $("confirmOk").addEventListener("click", () => closeConfirm(true));
+  $("confirmCancel").addEventListener("click", () => closeConfirm(false));
+  $("confirmModal").addEventListener("click", (e) => {
+    if (e.target === $("confirmModal")) closeConfirm(false); // backdrop
+  });
+  document.addEventListener("keydown", (e) => {
+    if ($("confirmModal").hidden) return;
+    if (e.key === "Escape") closeConfirm(false);
+    else if (e.key === "Enter") closeConfirm(true);
+  });
+
   // Modal (add/edit source)
   $("connectBtn").addEventListener("click", doConnect);
   $("saveSource").addEventListener("click", doSave);
