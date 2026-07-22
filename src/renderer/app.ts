@@ -969,6 +969,84 @@
     tr.classList.toggle("dirty-row", !!tr.querySelector("td.dirty"));
   }
 
+  // ---------- cell menu + full-value editor ----------
+  let cellTarget: { rk: string; col: string } | null = null;
+  let cellEditTarget: { rk: string; col: string; editable: boolean } | null = null;
+
+  function cellIsEditable(col: string): boolean {
+    const meta = state.columns.find((c) => c.name === col);
+    return state.pk.length > 0 && !!meta && !meta.isPk;
+  }
+
+  // Set a cell's value from outside the inline editor (the value editor / Set NULL).
+  function setCellValue(rk: string, col: string, newVal: Cell): void {
+    const row = findRow(rk);
+    if (!row) return;
+    const orig = row[col];
+    const origStr = orig === null ? "" : String(orig);
+    const key = rk + "" + col;
+    if (newVal === orig || (newVal !== null && String(newVal) === origStr)) {
+      delete state.dirty[key];
+    } else {
+      state.dirty[key] = { rowKey: rk, pkVals: pkValsOf(row), col, old: orig, val: newVal };
+    }
+    renderGrid(); // re-render reflects the new value + dirty styling
+  }
+
+  function openCellMenu(rk: string, col: string, x: number, y: number): void {
+    cellTarget = { rk, col };
+    const menu = $("cellMenu");
+    (menu.querySelector('[data-act="setnull"]') as HTMLButtonElement).disabled = !cellIsEditable(col);
+    menu.hidden = false;
+    const mw = menu.offsetWidth;
+    const mh = menu.offsetHeight;
+    menu.style.left = Math.min(x, window.innerWidth - mw - 8) + "px";
+    menu.style.top = Math.min(y, window.innerHeight - mh - 8) + "px";
+  }
+
+  function closeCellMenu(): void {
+    cellTarget = null;
+    $("cellMenu").hidden = true;
+  }
+
+  function syncCellNull(): void {
+    ($("cellValue") as HTMLTextAreaElement).disabled = asInput("cellNull").checked;
+  }
+
+  function openCellEditor(rk: string, col: string): void {
+    const row = findRow(rk);
+    if (!row) return;
+    const d = state.dirty[rk + "" + col];
+    const cur: Cell = d ? d.val : row[col];
+    const editable = cellIsEditable(col);
+    cellEditTarget = { rk, col, editable };
+    $("cellModalTitle").textContent = (editable ? "Edit " : "View ") + col;
+    const area = $("cellValue") as HTMLTextAreaElement;
+    area.value = cur === null ? "" : String(cur);
+    area.readOnly = !editable;
+    const nullBox = asInput("cellNull");
+    nullBox.checked = cur === null;
+    nullBox.disabled = !editable;
+    syncCellNull();
+    $("cellSave").hidden = !editable;
+    $("cellModal").hidden = false;
+    if (editable) area.focus();
+  }
+
+  function closeCellModal(): void {
+    cellEditTarget = null;
+    $("cellModal").hidden = true;
+  }
+
+  function saveCellEditor(): void {
+    if (!cellEditTarget || !cellEditTarget.editable) return closeCellModal();
+    const val: Cell = asInput("cellNull").checked
+      ? null
+      : ($("cellValue") as HTMLTextAreaElement).value;
+    setCellValue(cellEditTarget.rk, cellEditTarget.col, val);
+    closeCellModal();
+  }
+
   // ---------- pending changes ----------
   function renderPending(): void {
     const keys = Object.keys(state.dirty);
@@ -1117,12 +1195,42 @@
     else if (act === "delete") deleteSourceById(id);
   });
   document.addEventListener("mousedown", (e) => {
-    if (ctxSourceId && !(e.target as HTMLElement).closest("#ctxMenu")) closeCtxMenu();
+    const t = e.target as HTMLElement;
+    if (ctxSourceId && !t.closest("#ctxMenu")) closeCtxMenu();
+    if (cellTarget && !t.closest("#cellMenu")) closeCellMenu();
   });
   document.addEventListener("keydown", (e) => {
     if ((e as KeyboardEvent).key !== "Escape") return;
-    if (ctxSourceId) closeCtxMenu();
-    else if (!$("sourceModal").hidden) closeModal();
+    if (cellTarget) return closeCellMenu();
+    if (ctxSourceId) return closeCtxMenu();
+    if (!$("cellModal").hidden) return closeCellModal();
+    if (!$("sourceModal").hidden) return closeModal();
+  });
+
+  // Cell right-click menu + value editor
+  $("tbody").addEventListener("contextmenu", (e) => {
+    const td = (e.target as HTMLElement).closest<HTMLElement>("td[data-rk]");
+    if (!td) return;
+    e.preventDefault();
+    openCellMenu(td.dataset.rk!, td.dataset.col!, (e as MouseEvent).clientX, (e as MouseEvent).clientY);
+  });
+  $("cellMenu").addEventListener("click", (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>(".ctx-item");
+    if (!btn || btn.hasAttribute("disabled")) return;
+    const t = cellTarget;
+    const act = btn.dataset.act;
+    closeCellMenu();
+    if (!t) return;
+    if (act === "edit") openCellEditor(t.rk, t.col);
+    else if (act === "setnull" && cellIsEditable(t.col)) setCellValue(t.rk, t.col, null);
+  });
+  $("gridScroll").addEventListener("scroll", closeCellMenu);
+  $("cellSave").addEventListener("click", saveCellEditor);
+  $("cellCancel").addEventListener("click", closeCellModal);
+  $("cellModalClose").addEventListener("click", closeCellModal);
+  asInput("cellNull").addEventListener("change", syncCellNull);
+  $("cellModal").addEventListener("mousedown", (e) => {
+    if (e.target === $("cellModal")) closeCellModal(); // backdrop click
   });
 
   // Grid / query
