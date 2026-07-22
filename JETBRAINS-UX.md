@@ -5,8 +5,8 @@ M = medium). Checked = done in PG Data Studio.
 
 ## Shortlist — small & high-impact
 
-- [ ] **1. Type-to-filter the table list** (S) — the biggest win; DBs have 100s of tables.
-- [ ] **2. Full-name tooltip on truncated tables** (S).
+- [x] **1. Type-to-filter the table list** (S) — the biggest win; DBs have 100s of tables.
+- [x] **2. Full-name tooltip on truncated tables** (S).
 - [ ] **3. Right-click cell → Filter by value / Copy / Set NULL** (M).
 - [ ] **4. Copy cell / selection as TSV (⌘C)** (S).
 - [ ] **5. Expand a cell (value viewer) for long/JSON/date values** (S–M).
@@ -17,14 +17,24 @@ M = medium). Checked = done in PG Data Studio.
 ## Full menu by area
 
 ### Table list / navigation
-- [ ] Type-to-filter (speed search)
-- [ ] Full-name tooltip on hover
+- [x] Type-to-filter (speed search)
+- [x] Full-name tooltip on hover
+- [x] Navigator tree: source > schema > table > column (lazy columns)
+- [x] Object icons per type (Lucide: database / schema / table / column)
+- [x] Collapsible schema groups (expand/collapse throughout the tree)
 - [ ] Keyboard up/down + Enter to open
-- [ ] Object icons per type (table / view / materialized view)
-- [ ] Collapsible schema groups
+- [ ] Views / materialized views as distinct node types
 - [ ] Sort tables by name or size
 - [ ] Remember last-opened table on reconnect
 - [ ] Favorites / pinned tables
+
+### Data sources
+- [x] Add / edit source in a modal
+- [x] Right-click source menu: Edit / Duplicate / Disconnect / Delete
+- [x] Connection status dot per source
+- [x] Resizable sidebar splitter (persisted)
+- [ ] Multiple sources connected at once (currently one active at a time)
+- [ ] Source grouping / per-source color
 
 ### Data grid — viewing
 - [ ] Cell selection (not just edit) + range selection

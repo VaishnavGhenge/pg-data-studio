@@ -58,6 +58,16 @@ v0.1.0 shipped as the initial commit. Since then, four features have merged to
     `grid-template-rows: minmax(0, 1fr)` + `min-height: 0` on flex children so
     their `overflow:auto` regions actually scroll.
 
+### Table filter + navigator — on `feature/db-navigator`
+- Sidebar table filter (type-to-narrow) + full-name tooltips; tree renders as one
+  delegated list (perf fix for the table-listing lag).
+- Reworked into a DataGrip-style **database navigator**: lazy tree of
+  source > schema > table > column, click a source to connect (one active at a
+  time), click a table to open, expand a table for its columns.
+- Connection form moved into a **modal**; **right-click** a source for
+  Edit / Duplicate / Disconnect / Delete; **draggable sidebar splitter**
+  (persisted). Icons switched to inlined Lucide SVGs.
+
 ## TODO
 
 Next up (rough priority):
