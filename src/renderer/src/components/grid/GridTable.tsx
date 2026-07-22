@@ -5,7 +5,7 @@
 // selectedTd on every call, without having to enumerate every place that
 // could trigger it.
 
-import { useState } from "react";
+import { useCallback, useState, type MouseEvent } from "react";
 import { useTableState, useTableDispatch } from "../../state/tableStore";
 import { useTableActions } from "../../hooks/useTableActions";
 import { useCellEditing } from "../../hooks/useCellEditing";
@@ -52,15 +52,30 @@ export function GridTable({ rows }: GridTableProps) {
     return isEditableTable && !!meta && !meta.isPk;
   }
 
-  function setCellValue(rowKey: string, col: string, val: Cell) {
-    const row = findRow(rowKey);
-    if (!row) return;
-    dispatch({ type: "COMMIT_CELL", rowKey, col, pkVals: pkValsOf(pk, row), orig: row[col], val });
-  }
+  // Stable across renders (only reference rows/pk/dispatch, none of which
+  // change from a keystroke) — passed straight to every GridRow, so rows
+  // uninvolved in the current edit see identical props and skip re-rendering
+  // entirely instead of every row re-rendering on every keystroke.
+  const setCellValue = useCallback(
+    (rowKey: string, col: string, val: Cell) => {
+      const row = rows.find((r) => rowKeyOf(pk, r) === rowKey);
+      if (!row) return;
+      dispatch({ type: "COMMIT_CELL", rowKey, col, pkVals: pkValsOf(pk, row), orig: row[col], val });
+    },
+    [rows, pk, dispatch]
+  );
 
-  function commitCellFromText(rowKey: string, col: string, text: string) {
-    setCellValue(rowKey, col, computeCommitValue(text));
-  }
+  const commitCellFromText = useCallback(
+    (rowKey: string, col: string, text: string) => {
+      setCellValue(rowKey, col, computeCommitValue(text));
+    },
+    [setCellValue]
+  );
+
+  const handleCellContextMenu = useCallback((rowKey: string, col: string, e: MouseEvent) => {
+    e.preventDefault();
+    setCellMenu({ rowKey, col, x: e.clientX, y: e.clientY });
+  }, []);
 
   return (
     <>
@@ -100,15 +115,12 @@ export function GridTable({ rows }: GridTableProps) {
                 isRowEditing={isRowEditing}
                 editingCol={isRowEditing ? editing.col : null}
                 editDraft={isRowEditing ? editing.draft : ""}
-                onSelectCell={(col) => select(rk, col)}
-                onBeginEdit={(col, text) => beginEdit(rk, col, text)}
+                onSelectCell={select}
+                onBeginEdit={beginEdit}
                 onDraftChange={updateDraft}
-                onCommitCell={(col, text) => commitCellFromText(rk, col, text)}
+                onCommitCell={commitCellFromText}
                 onEndEdit={endEdit}
-                onCellContextMenu={(col, e) => {
-                  e.preventDefault();
-                  setCellMenu({ rowKey: rk, col, x: e.clientX, y: e.clientY });
-                }}
+                onCellContextMenu={handleCellContextMenu}
               />
             );
           })}

@@ -3,7 +3,7 @@
 // selected/editing objects), so React.memo's shallow comparison bails out
 // for every cell except the one actually changing.
 
-import { memo, type MouseEvent } from "react";
+import { memo, useLayoutEffect, useRef, type MouseEvent } from "react";
 
 const NUMERIC_TYPE = /int|numeric|real|double|decimal|money|serial/i;
 
@@ -40,6 +40,21 @@ function GridCellImpl({
   onEndEdit,
   onContextMenu,
 }: GridCellProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Focus + select-all exactly once when edit mode begins, not on every
+  // keystroke. An inline ref callback (`ref={(el) => ...}`) is a new function
+  // every render, which makes React detach/reattach it — and therefore
+  // re-run focus()+select() — on every render, not just the first; that
+  // re-selected the whole draft after each typed character, so the next
+  // keystroke replaced everything instead of appending.
+  useLayoutEffect(() => {
+    if (isEditing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [isEditing]);
+
   const isNum = NUMERIC_TYPE.test(col.dataType);
   const cls = [
     isNum ? "num" : "",
@@ -72,12 +87,7 @@ function GridCellImpl({
             onCommit(editDraft);
             onEndEdit();
           }}
-          ref={(el) => {
-            if (el) {
-              el.focus();
-              el.select();
-            }
-          }}
+          ref={inputRef}
         />
       ) : (
         <span

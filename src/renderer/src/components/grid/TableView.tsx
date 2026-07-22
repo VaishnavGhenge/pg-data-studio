@@ -12,14 +12,18 @@
 import { useState } from "react";
 import { useTableState } from "../../state/tableStore";
 import { useTableActions } from "../../hooks/useTableActions";
+import { buildUpdatePreview } from "../../lib/sqlPreview";
 import { Toolbar } from "./Toolbar";
 import { WhereBar } from "./WhereBar";
 import { GridTable } from "./GridTable";
+import { SaveConfirmModal } from "./SaveConfirmModal";
 
 export function TableView() {
   const state = useTableState();
   const { goToPage, applyWhere, save, revertAll } = useTableActions();
   const [quickFilterRaw, setQuickFilterRaw] = useState("");
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const quickFilterTrimmed = quickFilterRaw.trim();
   const visibleRows = quickFilterTrimmed
@@ -47,6 +51,16 @@ export function TableView() {
       ].join("|")
     : "none";
 
+  async function confirmSave(): Promise<void> {
+    setSaving(true);
+    try {
+      await save();
+      setPreviewOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <>
       <Toolbar
@@ -61,7 +75,7 @@ export function TableView() {
         onPrevPage={() => goToPage(-1)}
         onNextPage={() => goToPage(1)}
         dirtyCount={dirtyCount}
-        onSave={save}
+        onSave={() => setPreviewOpen(true)}
         onRevert={revertAll}
       />
       <WhereBar appliedWhere={state.where} columns={state.columns} onApply={applyWhere} />
@@ -72,6 +86,15 @@ export function TableView() {
           <div className="empty">Select a table to view its data.</div>
         )}
       </div>
+      {state.current && (
+        <SaveConfirmModal
+          open={previewOpen}
+          statements={buildUpdatePreview(state.dirty, state.pk, state.current.schema, state.current.name)}
+          saving={saving}
+          onConfirm={confirmSave}
+          onCancel={() => setPreviewOpen(false)}
+        />
+      )}
     </>
   );
 }

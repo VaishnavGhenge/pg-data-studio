@@ -1,4 +1,6 @@
 import { Pager } from "./Pager";
+import { useToast } from "../../state/toastStore";
+import { CheckIcon, CopyIcon, UndoIcon } from "../common/icons";
 
 interface ToolbarProps {
   previewSql: string;
@@ -12,7 +14,7 @@ interface ToolbarProps {
   onPrevPage: () => void;
   onNextPage: () => void;
   dirtyCount: number;
-  onSave: () => void;
+  onSave: () => void; // requests the save-preview modal, not an immediate write
   onRevert: () => void;
 }
 
@@ -31,9 +33,28 @@ export function Toolbar({
   onSave,
   onRevert,
 }: ToolbarProps) {
+  const { show: toast } = useToast();
+
+  async function copySql(): Promise<void> {
+    if (!previewSql) return;
+    try {
+      await navigator.clipboard.writeText(previewSql);
+      toast("✓ Copied query");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Couldn't copy to clipboard", true);
+    }
+  }
+
   return (
     <div className="toolbar">
-      <div className="sql">{previewSql}</div>
+      <div className="sql-wrap">
+        <div className="sql">{previewSql}</div>
+        {previewSql && (
+          <button className="sql-copy" title="Copy query" aria-label="Copy query" onClick={copySql}>
+            <CopyIcon size={12} />
+          </button>
+        )}
+      </div>
       <input
         className="filter"
         placeholder="filter loaded rows…"
@@ -53,11 +74,24 @@ export function Toolbar({
         <b>{visibleRowCount}</b> rows · <b>{ms}</b> ms
       </div>
       <div className="toolbar-divider" />
-      <button className="btn ghost" disabled={dirtyCount === 0} onClick={onRevert}>
-        Revert
+      <button
+        className="btn ghost icon-only"
+        title="Revert all changes"
+        aria-label="Revert all changes"
+        disabled={dirtyCount === 0}
+        onClick={onRevert}
+      >
+        <UndoIcon size={15} />
       </button>
-      <button className="btn primary" disabled={dirtyCount === 0} onClick={onSave}>
-        {dirtyCount ? `Save ${dirtyCount} ${dirtyCount === 1 ? "change" : "changes"}` : "Save changes"}
+      <button
+        className="btn primary icon-only"
+        title={dirtyCount ? `Save ${dirtyCount} ${dirtyCount === 1 ? "change" : "changes"}` : "Save changes"}
+        aria-label="Save changes"
+        disabled={dirtyCount === 0}
+        onClick={onSave}
+      >
+        <CheckIcon size={15} />
+        {dirtyCount > 0 && <span className="toolbar-badge">{dirtyCount}</span>}
       </button>
     </div>
   );

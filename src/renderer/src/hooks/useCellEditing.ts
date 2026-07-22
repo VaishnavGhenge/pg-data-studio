@@ -16,7 +16,7 @@
 // old renderer's actual mechanism (revertCell rewrote the cell's content to
 // the original value, then blur's unconditional commit became a no-op).
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 export interface CellPos {
   rowKey: string;
@@ -27,22 +27,26 @@ export function useCellEditing() {
   const [selected, setSelected] = useState<CellPos | null>(null);
   const [editing, setEditing] = useState<(CellPos & { draft: string }) | null>(null);
 
-  function select(rowKey: string, col: string): void {
+  // Stable across renders (setState setters never change identity) so
+  // GridTable can hand these straight to every GridRow without creating a
+  // fresh closure per row per render — otherwise GridRow's memo would never
+  // bail out, and every row would re-render on every keystroke.
+  const select = useCallback((rowKey: string, col: string): void => {
     setSelected({ rowKey, col });
-  }
+  }, []);
 
-  function beginEdit(rowKey: string, col: string, initialText: string): void {
+  const beginEdit = useCallback((rowKey: string, col: string, initialText: string): void => {
     setSelected({ rowKey, col });
     setEditing({ rowKey, col, draft: initialText });
-  }
+  }, []);
 
-  function updateDraft(text: string): void {
+  const updateDraft = useCallback((text: string): void => {
     setEditing((e) => (e ? { ...e, draft: text } : e));
-  }
+  }, []);
 
-  function endEdit(): void {
+  const endEdit = useCallback((): void => {
     setEditing(null);
-  }
+  }, []);
 
   return { selected, editing, select, beginEdit, updateDraft, endEdit };
 }

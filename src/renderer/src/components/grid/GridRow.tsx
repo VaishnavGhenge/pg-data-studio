@@ -21,12 +21,16 @@ interface GridRowProps {
   isRowEditing: boolean;
   editingCol: string | null;
   editDraft: string;
-  onSelectCell: (col: string) => void;
-  onBeginEdit: (col: string, initialText: string) => void;
+  // These are the same stable function references for every row (bound in
+  // GridTable via useCallback), so they must accept rowKey explicitly rather
+  // than each row's caller pre-binding it into a fresh closure — otherwise
+  // every row would get a "new" prop every render and never skip re-rendering.
+  onSelectCell: (rowKey: string, col: string) => void;
+  onBeginEdit: (rowKey: string, col: string, initialText: string) => void;
   onDraftChange: (text: string) => void;
-  onCommitCell: (col: string, text: string) => void;
+  onCommitCell: (rowKey: string, col: string, text: string) => void;
   onEndEdit: () => void;
-  onCellContextMenu: (col: string, e: MouseEvent) => void;
+  onCellContextMenu: (rowKey: string, col: string, e: MouseEvent) => void;
 }
 
 function GridRowImpl({
@@ -68,12 +72,12 @@ function GridRowImpl({
             isSelected={isRowSelected && selectedCol === c.name}
             isEditing={isRowEditing && editingCol === c.name}
             editDraft={editDraft}
-            onSelect={() => onSelectCell(c.name)}
-            onBeginEdit={(text) => onBeginEdit(c.name, text)}
+            onSelect={() => onSelectCell(rowKey, c.name)}
+            onBeginEdit={(text) => onBeginEdit(rowKey, c.name, text)}
             onDraftChange={onDraftChange}
-            onCommit={(text) => onCommitCell(c.name, text)}
+            onCommit={(text) => onCommitCell(rowKey, c.name, text)}
             onEndEdit={onEndEdit}
-            onContextMenu={(e) => onCellContextMenu(c.name, e)}
+            onContextMenu={(e) => onCellContextMenu(rowKey, c.name, e)}
           />
         );
       })}
