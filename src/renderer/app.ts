@@ -314,7 +314,6 @@
     nav.expanded = new Set([kSrc(src.id)]);
     nav.columnsByTable = {};
     clearWorkspace();
-    $("disconnectBtn").hidden = false;
     $("titlebarConn").textContent = res.data.database + " · " + res.data.host;
     const tr = await window.api.listTables();
     state.tables = tr.ok ? tr.data : [];
@@ -332,7 +331,6 @@
     nav.columnsByTable = {};
     state.tables = [];
     clearWorkspace();
-    $("disconnectBtn").hidden = true;
     $("titlebarConn").textContent = "";
     renderNav();
   }
@@ -565,8 +563,10 @@
   function openCtxMenu(id: string, x: number, y: number): void {
     ctxSourceId = id;
     const menu = $("ctxMenu");
-    (menu.querySelector('[data-act="disconnect"]') as HTMLButtonElement).disabled =
-      nav.connectedId !== id;
+    // Refresh and Disconnect only apply to the currently-connected source.
+    const offline = nav.connectedId !== id;
+    (menu.querySelector('[data-act="refresh"]') as HTMLButtonElement).disabled = offline;
+    (menu.querySelector('[data-act="disconnect"]') as HTMLButtonElement).disabled = offline;
     menu.hidden = false;
     const mw = menu.offsetWidth;
     const mh = menu.offsetHeight;
@@ -1090,8 +1090,6 @@
   });
 
   // Navigator
-  $("disconnectBtn").addEventListener("click", doDisconnect);
-  $("refreshBtn").addEventListener("click", refreshNav);
   $("tree").addEventListener("click", (e) => onNavClick(e as MouseEvent));
   $("tree").addEventListener("contextmenu", (e) => {
     const row = (e.target as HTMLElement).closest<HTMLElement>(".nrow.source");
@@ -1114,6 +1112,7 @@
     if (!id) return;
     if (act === "edit") { const s = sources.find((x) => x.id === id); if (s) openModal(s); }
     else if (act === "duplicate") duplicateSource(id);
+    else if (act === "refresh") { if (nav.connectedId === id) refreshNav(); }
     else if (act === "disconnect") { if (nav.connectedId === id) doDisconnect(); }
     else if (act === "delete") deleteSourceById(id);
   });
