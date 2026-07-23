@@ -5,7 +5,7 @@
 // selectedTd on every call, without having to enumerate every place that
 // could trigger it.
 
-import { useCallback, useState, type MouseEvent } from "react";
+import { useCallback, useState, type CSSProperties, type MouseEvent } from "react";
 import { useTableState, useTableDispatch } from "../../state/tableStore";
 import { useTableActions } from "../../hooks/useTableActions";
 import { useCellEditing } from "../../hooks/useCellEditing";
@@ -40,6 +40,50 @@ export function GridTable({ rows }: GridTableProps) {
     y: number;
   } | null>(null);
   const [editorTarget, setEditorTarget] = useState<{ rowKey: string; col: string } | null>(null);
+
+  // Column widths live as CSS custom properties (`--col-w-N`) set on the
+  // <table> and inherited by every descendant td/th for free — GridRow/
+  // GridCell never take `colWidths` as a prop, so a resize only re-renders
+  // this component (and the small header row), never the 200 memoized body
+  // rows. Updates are rAF-throttled rather than per-mousemove: still a live
+  // drag, just capped to paint rate instead of raw mouse-event rate.
+  // GridHeaderCell also reads the live width (not just the CSS var) to
+  // decide whether there's room to show the data type next to the name —
+  // see its own comment.
+  const [colWidths, setColWidths] = useState<Record<number, number>>({});
+  const MIN_COL_WIDTH = 60;
+
+  const handleResizeStart = useCallback((e: MouseEvent, index: number) => {
+    const th = (e.target as HTMLElement).closest("th");
+    const startWidth = th?.getBoundingClientRect().width ?? 160;
+    const startX = e.clientX;
+    let latestX = startX;
+    let rafId = 0;
+
+    function clamp(px: number): number {
+      return Math.max(MIN_COL_WIDTH, Math.round(px));
+    }
+    function apply(clientX: number): void {
+      const next = clamp(startWidth + (clientX - startX));
+      setColWidths((prev) => (prev[index] === next ? prev : { ...prev, [index]: next }));
+    }
+    function onMove(ev: globalThis.MouseEvent): void {
+      latestX = ev.clientX;
+      if (!rafId) rafId = requestAnimationFrame(() => { rafId = 0; apply(latestX); });
+    }
+    function onUp(ev: globalThis.MouseEvent): void {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      if (rafId) cancelAnimationFrame(rafId);
+      apply(ev.clientX);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, []);
+
+  const tableStyle = Object.fromEntries(
+    Object.entries(colWidths).map(([idx, w]) => [`--col-w-${idx}`, `${w}px`])
+  ) as CSSProperties;
 
   const isEditableTable = pk.length > 0;
 
@@ -79,19 +123,22 @@ export function GridTable({ rows }: GridTableProps) {
 
   return (
     <>
-      <table>
+      <table style={tableStyle}>
         <thead>
           <tr>
             <th className="gutter-h" />
-            {columns.map((c) => (
+            {columns.map((c, idx) => (
               <GridHeaderCell
                 key={c.name}
                 column={c}
+                index={idx}
+                currentWidth={colWidths[idx]}
                 sorted={sortCol === c.name}
                 sortDir={sortDir}
                 filtered={!!colFilters[c.name]}
                 onSortClick={() => setSort(c.name)}
                 onFunnelClick={(anchor) => setFunnelTarget({ col: c.name, anchor })}
+                onResizeStart={handleResizeStart}
               />
             ))}
           </tr>

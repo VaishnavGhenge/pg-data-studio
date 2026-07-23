@@ -1,6 +1,7 @@
 import { Pager } from "./Pager";
 import { useToast } from "../../state/toastStore";
 import { CheckIcon, CopyIcon, UndoIcon } from "../common/icons";
+import { showTitleIfTruncated } from "../../lib/truncatedTitle";
 
 interface ToolbarProps {
   previewSql: string;
@@ -48,7 +49,10 @@ export function Toolbar({
   return (
     <div className="toolbar">
       <div className="sql-wrap">
-        <div className={previewSql ? "sql" : "sql sql-empty"}>
+        <div
+          className={previewSql ? "sql" : "sql sql-empty"}
+          onMouseEnter={showTitleIfTruncated}
+        >
           {previewSql || "No query yet — select a table"}
         </div>
         {previewSql && (

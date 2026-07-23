@@ -31,7 +31,7 @@ function createWindow(): void {
     height: 780,
     minWidth: 900,
     minHeight: 560,
-    backgroundColor: "#16191f",
+    backgroundColor: "#0a0d13",
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     title: "PG Data Studio",
     webPreferences: {

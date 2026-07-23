@@ -216,6 +216,7 @@ export function NavigatorTree({
         label={c.name}
         leaf
         typeText={c.dataType}
+        title={`${c.name}: ${c.dataType}`}
         pk={c.isPk}
       />
     ));

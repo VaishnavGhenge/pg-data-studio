@@ -3,12 +3,18 @@
 // selected/editing objects), so React.memo's shallow comparison bails out
 // for every cell except the one actually changing.
 
-import { memo, useLayoutEffect, useRef, type MouseEvent } from "react";
+import { memo, useLayoutEffect, useRef, type CSSProperties, type MouseEvent } from "react";
+import { showTitleIfTruncated } from "../../lib/truncatedTitle";
 
 const NUMERIC_TYPE = /int|numeric|real|double|decimal|money|serial/i;
 
 interface GridCellProps {
   col: Column;
+  // Same column-position key GridHeaderCell uses for its `--col-w-N` custom
+  // property — kept as a plain stable number (not the live width) so a
+  // column resize never changes this component's props and never forces a
+  // re-render of rows that aren't actually involved in the drag.
+  colIndex: number;
   origValue: Cell;
   displayValue: Cell;
   isDirty: boolean;
@@ -26,6 +32,7 @@ interface GridCellProps {
 
 function GridCellImpl({
   col,
+  colIndex,
   origValue,
   displayValue,
   isDirty,
@@ -65,11 +72,18 @@ function GridCellImpl({
     .filter(Boolean)
     .join(" ");
 
+  // Same invalid-until-resized `var()` trick as the header: unresized
+  // columns keep the stylesheet's default width/240px cap untouched.
+  const widthVar = `var(--col-w-${colIndex})`;
+  const tdStyle: CSSProperties = { width: widthVar, maxWidth: widthVar };
+  const cellStyle: CSSProperties = { maxWidth: widthVar };
+
   return (
-    <td className={cls} onContextMenu={onContextMenu}>
+    <td className={cls} style={tdStyle} onContextMenu={onContextMenu}>
       {isEditing ? (
         <input
           className="cell cell-input"
+          style={cellStyle}
           spellCheck={false}
           value={editDraft}
           onChange={(e) => onDraftChange(e.target.value)}
@@ -92,6 +106,8 @@ function GridCellImpl({
       ) : (
         <span
           className="cell"
+          style={cellStyle}
+          onMouseEnter={showTitleIfTruncated}
           onMouseDown={isEditable ? onSelect : undefined}
           onDoubleClick={
             isEditable

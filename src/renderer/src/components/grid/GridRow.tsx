@@ -57,7 +57,7 @@ function GridRowImpl({
   return (
     <tr className={rowIsDirty ? "dirty-row" : ""}>
       <td className="gutter">{rowNum}</td>
-      {columns.map((c) => {
+      {columns.map((c, idx) => {
         const d = dirty[dirtyKey(rowKey, c.name)];
         const origValue = row[c.name];
         const displayValue = d ? d.val : origValue;
@@ -65,6 +65,7 @@ function GridRowImpl({
           <GridCell
             key={c.name}
             col={c}
+            colIndex={idx}
             origValue={origValue}
             displayValue={displayValue}
             isDirty={!!d}

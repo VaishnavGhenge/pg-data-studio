@@ -97,6 +97,30 @@ v0.1.0 shipped as the initial commit. Since then, four features have merged to
   the full-value editor, the discard-confirmation guard, and source
   management. Save-to-database itself wasn't exercised against real data.
 
+### Grid polish (on top of the React rewrite, not yet smoke-tested against a real DB)
+- Dark theme reworked to a deeper, more saturated navy palette with more
+  contrast between panels/canvas; scrollbars themed to match (were the
+  browser's stark white default).
+- Selected-cell fill switched from `background` to an inset box-shadow tint,
+  so it blends with the row's own shading (alt-row stripe, hover, dirty)
+  instead of overriding it with a flat rectangle that seamed against the row.
+- Column resize: drag a header's right edge (`.col-resizer`). Widths live as
+  `--col-w-N` CSS custom properties on the `<table>` (inherited by every
+  cell for free) so dragging never re-renders the 200 memoized body rows —
+  only the small header row and the table's own style attribute change,
+  rAF-throttled.
+- Column default width now fits the header's name alone, not the data —
+  `tbody td { width: 0 }` stops long values from stretching columns (the
+  old 240px cap is gone, it's unnecessary now). The data type only appears
+  next to the name once a column is dragged wide enough to fit both in
+  full (measured off-screen at mount, compared live against the drag
+  width), and disappears again if dragged back down.
+- `title` tooltips on hover wherever text is truncated: grid cells, header
+  name/type, SQL preview bar (all via `lib/truncatedTitle.ts`, computed
+  lazily on hover so it's cheap in a 200-row grid); navigator schema rows
+  and columns got the same static full-text tooltip TableRow/SourceRow
+  already had.
+
 ## TODO
 
 Next up (rough priority):

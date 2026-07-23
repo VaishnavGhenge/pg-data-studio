@@ -25,17 +25,38 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #16191f; --panel: #181b20; --panel-2: #1f242b; --editor: #1e2127;
-    --border: #2b313a; --border-strong: #3a424e; --text: #e6e9ef; --text-dim: #9aa4b2;
-    --text-faint: #6c7684; --accent: #3d9bfa; --accent-soft: rgba(61, 155, 250, 0.16);
-    --dirty: #e5a13a; --dirty-soft: rgba(229, 161, 58, 0.16); --good: #4caf7d;
-    --good-soft: rgba(76, 175, 125, 0.16); --danger: #e5574f; --danger-soft: rgba(229, 87, 79, 0.15);
-    --row-alt: #21262e; --sel: rgba(61, 155, 250, 0.14); --pk: #b18cf0;
-    --shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
+    /* Deeper, more saturated navy than the old neutral greys — panels sit a
+       shade above the canvas instead of blending into it, closer to the
+       layered look of DataGrip/TablePlus. */
+    --bg: #0a0d13; --panel: #10141c; --panel-2: #1a1f2b; --editor: #0d1017;
+    --border: #1f2530; --border-strong: #2c3342; --text: #e8ebf2; --text-dim: #95a0b5;
+    --text-faint: #5c6578; --accent: #4c8dff; --accent-soft: rgba(76, 141, 255, 0.16);
+    --dirty: #e2a53c; --dirty-soft: rgba(226, 165, 60, 0.16); --good: #34c976;
+    --good-soft: rgba(52, 201, 118, 0.16); --danger: #f2645c; --danger-soft: rgba(242, 100, 92, 0.15);
+    --row-alt: #12161f; --sel: rgba(76, 141, 255, 0.12); --pk: #b58cf5;
+    --shadow: 0 12px 36px rgba(0, 0, 0, 0.55);
   }
 }
 
 * { box-sizing: border-box; }
+/* Themed scrollbars: the unstyled browser default is a stark white bar that
+   ignores the app's light/dark palette, so it's restyled with the same
+   tokens as everything else (Firefox via scrollbar-color, Chromium/Electron
+   via the ::-webkit-scrollbar pseudo-elements). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+*::-webkit-scrollbar { width: 12px; height: 12px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background-color: var(--border-strong); border-radius: 8px;
+  border: 3px solid var(--bg);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover { background-color: var(--text-faint); }
+*::-webkit-scrollbar-corner { background: transparent; }
+
 /* The `hidden` attribute must win over any element's own `display` rule
    (.app, .connect, .pager, .filter-pop, .empty all set display). */
 [hidden] { display: none !important; }
@@ -362,7 +383,7 @@ thead th {
   position: sticky; top: 0; z-index: 2; background: var(--panel); text-align: left;
   font-weight: 600; color: var(--text-dim); white-space: nowrap; padding: 7px 12px;
   border-bottom: 1px solid var(--border-strong); border-right: 1px solid var(--border);
-  cursor: pointer; user-select: none; max-width: 240px;
+  cursor: pointer; user-select: none;
 }
 thead th:hover { color: var(--text); }
 thead th .th { display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -383,7 +404,24 @@ thead th:hover .funnel { opacity: 0.7; }
 thead th .funnel:hover { opacity: 1; color: var(--text); background: var(--panel-2); }
 thead th .funnel.on { opacity: 1; color: var(--accent); }
 thead th.filtered { color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
+/* Off-flow twin of .th (name + badge + type, unconstrained) that
+   GridHeaderCell measures to decide whether the real .typ fits — see the
+   component comment. `fixed`, not `absolute`: an absolutely-positioned
+   element pushed far off-screen still counts toward its scrolling
+   ancestor's (.grid-scroll) scrollable area, which would balloon the
+   horizontal scrollbar range by ~100000px; `fixed` is sized/measured the
+   same way but is anchored to the viewport, so it can't do that. */
+.th-measure { position: fixed; visibility: hidden; left: -99999px; top: 0; pointer-events: none; }
 .gutter-h { width: 40px; min-width: 40px; text-align: center; cursor: default; }
+/* Straddles the column's right border (thead th's own position:sticky
+   establishes the containing block, so this positions off the th itself,
+   not the table). Widened past its visible 2px so there's an actually
+   grabbable hit target instead of a pixel-hunt. */
+.col-resizer {
+  position: absolute; top: 0; right: -3px; bottom: 0; width: 6px;
+  cursor: col-resize; z-index: 3;
+}
+.col-resizer:hover, .col-resizer:active { background: var(--accent); opacity: 0.6; }
 
 /* ---- per-column filter popover ---- */
 .filter-pop {
@@ -405,6 +443,15 @@ thead th.filtered { color: var(--text); box-shadow: inset 0 -2px 0 var(--accent)
 .filter-pop-btns .btn { padding: 6px 12px; font-size: 11.5px; }
 
 tbody td {
+  /* width:0 is the standard "don't let this cell's content stretch the
+     column" trick for table-layout:auto — a nowrap cell's own preferred
+     (max-content) width would otherwise always win, which is exactly why
+     wide data (long decimals, etc.) used to force columns wider than their
+     header needed. With this, the column's default width comes from the
+     header's natural size instead, and cells just ellipsis-clip until the
+     user drags the header wider (see .col-resizer, which sets an explicit
+     inline width that overrides this). */
+  width: 0;
   padding: 0; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border);
   color: var(--text); white-space: nowrap; vertical-align: top;
 }
@@ -416,12 +463,17 @@ tbody tr:hover td { background: var(--sel); }
    comment below solves for .selected: a border-only ring blended into a
    same-hue background and was easy to miss). */
 tbody td:hover { background: var(--panel-2) !important; }
-.cell { padding: 5px 12px; min-height: 28px; display: block; outline: none; max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+/* No max-width here: the column's actual width — header-driven by default
+   (tbody td's width:0 trick), explicit once the user drags .col-resizer —
+   is what does the clipping now; this only needs to fill it and ellipsis. */
+.cell { padding: 5px 12px; min-height: 28px; display: block; outline: none; overflow: hidden; text-overflow: ellipsis; }
 td.editable:hover .cell { box-shadow: inset 0 0 0 1px var(--border-strong); }
-/* `tbody` prefix matches tbody td:hover's specificity (both 0,1,2) so these
-   still win — by source order — when a dirty/selected cell is also hovered;
-   plain `td.dirty`/`td.selected` (0,1,1) would otherwise lose to the hover
-   rule's higher specificity despite both being !important. */
+/* `tbody` prefix matches tbody td:hover's specificity (both 0,1,2) so this
+   still wins — by source order — when a dirty cell is also hovered; plain
+   `td.dirty` (0,1,1) would otherwise lose to the hover rule's higher
+   specificity despite both being !important. (.selected no longer competes
+   here — it tints via box-shadow, see below, which layers on top of
+   `background` instead of fighting it for the cascade.) */
 tbody td.dirty { background: var(--dirty-soft) !important; }
 /* !important: td.editable:hover .cell (0,3,1) outranks td.dirty/.selected
    .cell (0,2,1) and .cell:focus (0,2,0) on plain specificity, so hovering a
@@ -430,10 +482,12 @@ tbody td.dirty { background: var(--dirty-soft) !important; }
    exactly the "no blue border" bug reported when hovering a selected NULL
    cell. */
 td.dirty .cell { box-shadow: inset 2px 0 0 var(--dirty) !important; }
-/* !important to win over tbody tr:hover — a border-only ring was easy to
-   miss against the row's own hover tint (same accent hue), so the selected
-   cell looked unhighlighted until the mouse moved off that row. */
-tbody td.selected { background: var(--accent-soft) !important; }
+/* A huge inset spread with no blur is the standard "tint the whole box"
+   box-shadow trick — unlike `background`, it paints on top of whatever's
+   already there instead of replacing it, so the tint blends with the row's
+   own shading (alt-row stripe, hover, dirty) instead of overriding it with a
+   flat accent-soft rectangle that visibly seams against the row around it. */
+tbody td.selected { box-shadow: inset 0 0 0 999px var(--accent-soft); }
 td.selected .cell { box-shadow: inset 0 0 0 2px var(--accent) !important; }
 .cell:focus { box-shadow: inset 0 0 0 2px var(--accent) !important; background: var(--editor); white-space: normal; overflow: visible; }
 /* The actively-edited cell renders a real <input> in place of the <span> —

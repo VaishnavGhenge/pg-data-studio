@@ -12,7 +12,15 @@ interface SchemaRowProps {
 export function SchemaRow({ schema, open, onClick, children }: SchemaRowProps) {
   return (
     <>
-      <NavRow kind="schema" depth={1} icon={<SchemaIcon size={14} />} label={schema} open={open} onClick={onClick} />
+      <NavRow
+        kind="schema"
+        depth={1}
+        icon={<SchemaIcon size={14} />}
+        label={schema}
+        open={open}
+        title={schema}
+        onClick={onClick}
+      />
       {open && children}
     </>
   );
