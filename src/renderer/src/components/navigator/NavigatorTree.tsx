@@ -270,7 +270,7 @@ export function NavigatorTree({
   }
 
   return (
-    <div className="tree">
+    <div className="tree" role="tree" aria-label="Database objects">
       {!sources.length ? (
         <div className="tree-empty">No data sources yet. Click + to add one.</div>
       ) : (

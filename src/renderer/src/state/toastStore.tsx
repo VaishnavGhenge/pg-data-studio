@@ -23,9 +23,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const show = useCallback((message: string, isError = false) => {
     setState({ message, isError, visible: true });
     if (timerRef.current) window.clearTimeout(timerRef.current);
-    timerRef.current = window.setTimeout(() => {
-      setState((s) => ({ ...s, visible: false }));
-    }, isError ? 4000 : 2200);
+    timerRef.current = window.setTimeout(
+      () => {
+        setState((s) => ({ ...s, visible: false }));
+      },
+      isError ? 4000 : 2200,
+    );
   }, []);
 
   return <Ctx.Provider value={{ ...state, show }}>{children}</Ctx.Provider>;

@@ -17,24 +17,39 @@ function readRaw(): Record<string, unknown> {
   try {
     const parsed = JSON.parse(fs.readFileSync(FILE, "utf8"));
     return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
+    throw error;
   }
 }
 
 function write(data: StoreData): void {
+  fs.mkdirSync(path.dirname(FILE), { recursive: true });
+  const temp = `${FILE}.${randomUUID()}.tmp`;
   try {
-    fs.writeFileSync(FILE, JSON.stringify(data, null, 2), "utf8");
-  } catch {
-    /* non-fatal: persistence is a convenience, not a requirement */
+    fs.writeFileSync(temp, JSON.stringify(data, null, 2), {
+      encoding: "utf8",
+      mode: 0o600,
+      flag: "wx",
+    });
+    fs.renameSync(temp, FILE);
+  } finally {
+    try {
+      fs.unlinkSync(temp);
+    } catch {
+      /* Already renamed, or never created. */
+    }
   }
 }
 
 function isSource(s: unknown): s is Source {
   const o = s as Source;
   return (
-    !!o && typeof o.id === "string" && typeof o.host === "string" &&
-    typeof o.database === "string" && typeof o.user === "string"
+    !!o &&
+    typeof o.id === "string" &&
+    typeof o.host === "string" &&
+    typeof o.database === "string" &&
+    typeof o.user === "string"
   );
 }
 
@@ -70,9 +85,7 @@ function load(): StoreData {
     return { sources: raw.sources.filter(isSource) };
   }
   const recent = Array.isArray(raw.recent) ? (raw.recent as string[]) : [];
-  const sources = recent
-    .map(sourceFromUrl)
-    .filter((s): s is Source => s !== null);
+  const sources = recent.map(sourceFromUrl).filter((s): s is Source => s !== null);
   const data: StoreData = { sources };
   if (recent.length) write(data); // persist the migration once
   return data;

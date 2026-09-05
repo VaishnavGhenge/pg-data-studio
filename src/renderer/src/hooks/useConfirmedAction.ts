@@ -3,7 +3,7 @@
 // table, page, apply WHERE, apply/clear a column filter, change sort).
 
 import { useCallback } from "react";
-import { useTableState } from "../state/tableStore";
+import { useTableState, useWorkspaceRequests } from "../state/tableStore";
 import { useConfirmDiscard } from "../state/confirmStore";
 
 // Returns whether the action actually ran (false only when the user declined
@@ -13,16 +13,20 @@ import { useConfirmDiscard } from "../state/confirmStore";
 export function useConfirmedAction() {
   const { dirty } = useTableState();
   const confirmDiscard = useConfirmDiscard();
+  const requests = useWorkspaceRequests();
 
   return useCallback(
     async (action: () => void | Promise<void>): Promise<boolean> => {
+      if (requests.busy) return false;
+      const version = requests.version;
       if (Object.keys(dirty).length > 0) {
         const ok = await confirmDiscard();
         if (!ok) return false;
       }
+      if (requests.busy || !requests.isCurrent(version)) return false;
       await action();
       return true;
     },
-    [dirty, confirmDiscard]
+    [dirty, confirmDiscard, requests],
   );
 }

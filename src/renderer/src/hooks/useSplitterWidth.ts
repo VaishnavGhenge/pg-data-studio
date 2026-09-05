@@ -2,7 +2,13 @@
 // (e.g. "280px") on the documentElement's --side-w custom property — mirrors
 // the old renderer's initSplitter() exactly, including the 180-560px clamp.
 
-import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 
 const MIN_WIDTH = 180;
 const MAX_WIDTH = 560;
@@ -38,7 +44,10 @@ export function useSplitterWidth() {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
       try {
-        localStorage.setItem(STORAGE_KEY, document.documentElement.style.getPropertyValue("--side-w"));
+        localStorage.setItem(
+          STORAGE_KEY,
+          document.documentElement.style.getPropertyValue("--side-w"),
+        );
       } catch {
         /* ignore */
       }

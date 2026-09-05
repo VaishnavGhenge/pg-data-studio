@@ -299,14 +299,25 @@ export function FunnelIcon({ size = 11 }: IconProps) {
 // (thinner stroke, no fill) from the Lucide-style one used in the navigator.
 export function DatabaseModalIcon({ size = 20 }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true" className="modal-icon">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      className="modal-icon"
+    >
       <ellipse cx="8" cy="3.5" rx="5.5" ry="2.2" stroke="currentColor" strokeWidth="1.1" />
       <path
         d="M2.5 3.5v9c0 1.2 2.5 2.2 5.5 2.2s5.5-1 5.5-2.2v-9"
         stroke="currentColor"
         strokeWidth="1.1"
       />
-      <path d="M2.5 8c0 1.2 2.5 2.2 5.5 2.2s5.5-1 5.5-2.2" stroke="currentColor" strokeWidth="1.1" />
+      <path
+        d="M2.5 8c0 1.2 2.5 2.2 5.5 2.2s5.5-1 5.5-2.2"
+        stroke="currentColor"
+        strokeWidth="1.1"
+      />
     </svg>
   );
 }

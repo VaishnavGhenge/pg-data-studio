@@ -47,8 +47,9 @@ function buildUrl(f: FormFields): string {
 // right back in plain text). Only cosmetic — the real password stays in
 // component state and is never derived from this masked string.
 function maskUrlPassword(raw: string): string {
-  return raw.replace(/^(postgres(?:ql)?:\/\/[^:/@]*:)([^@]*)(@)/, (_m, pre, pass, at) =>
-    pre + (pass ? "•".repeat(Math.min(pass.length, 10)) : "") + at
+  return raw.replace(
+    /^(postgres(?:ql)?:\/\/[^:/@]*:)([^@]*)(@)/,
+    (_m, pre, pass, at) => pre + (pass ? "•".repeat(Math.min(pass.length, 10)) : "") + at,
   );
 }
 
@@ -332,7 +333,9 @@ function SourceModalForm({ source, onClose }: { source: Source | null; onClose: 
           className={"test-result" + (testResult ? (testResult.ok ? " ok" : " err") : "")}
           title={testResult?.text}
         >
-          {!testing && testResult && (testResult.ok ? <CheckCircleIcon size={12} /> : <AlertCircleIcon size={12} />)}
+          {!testing &&
+            testResult &&
+            (testResult.ok ? <CheckCircleIcon size={12} /> : <AlertCircleIcon size={12} />)}
           {testing ? "Testing…" : (testResult?.text ?? "")}
         </span>
         <span className="spacer" />

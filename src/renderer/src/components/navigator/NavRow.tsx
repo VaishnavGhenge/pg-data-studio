@@ -64,6 +64,45 @@ export function NavRow({
       title={title}
       onClick={onClick}
       onContextMenu={onContextMenu}
+      role="treeitem"
+      tabIndex={0}
+      aria-level={depth + 1}
+      aria-expanded={leaf ? undefined : !!open}
+      aria-selected={!!active}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        const items = Array.from(
+          e.currentTarget
+            .closest('[role="tree"]')
+            ?.querySelectorAll<HTMLElement>('[role="treeitem"]') ?? [],
+        );
+        const index = items.indexOf(e.currentTarget);
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          e.preventDefault();
+          items[
+            Math.max(0, Math.min(items.length - 1, index + (e.key === "ArrowDown" ? 1 : -1)))
+          ]?.focus();
+        } else if (e.key === "Home" || e.key === "End") {
+          e.preventDefault();
+          (e.key === "Home" ? items[0] : items.at(-1))?.focus();
+        } else if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick?.();
+        } else if (e.key === "ArrowRight" && !leaf) {
+          e.preventDefault();
+          if (!open) (onChevronClick ?? onClick)?.();
+          else items[index + 1]?.focus();
+        } else if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          if (open) (onChevronClick ?? onClick)?.();
+          else
+            items
+              .slice(0, index)
+              .reverse()
+              .find((item) => Number(item.getAttribute("aria-level")) < depth + 1)
+              ?.focus();
+        }
+      }}
     >
       {leaf ? (
         <span className="chev leaf" />

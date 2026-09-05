@@ -63,6 +63,6 @@ export function useConfirmDiscard(): () => Promise<boolean> {
         okLabel: "Discard",
         danger: true,
       }),
-    [confirm]
+    [confirm],
   );
 }

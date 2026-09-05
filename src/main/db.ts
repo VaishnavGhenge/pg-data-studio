@@ -6,6 +6,7 @@
 import { Pool } from "pg";
 
 let pool: Pool | null = null;
+let connectionVersion = 0;
 let meta: DbMeta = { database: null, serverVersion: null, host: null };
 
 function quoteIdent(name: string): string {
@@ -37,7 +38,7 @@ async function probe(p: Pool): Promise<DbMeta> {
   const client = await p.connect();
   try {
     const r = await client.query(
-      "select current_database() as db, version() as v, inet_server_addr()::text as host"
+      "select current_database() as db, version() as v, inet_server_addr()::text as host",
     );
     return {
       database: r.rows[0].db,
@@ -50,15 +51,21 @@ async function probe(p: Pool): Promise<DbMeta> {
 }
 
 export async function connect(cfg: ConnectConfig): Promise<DbMeta> {
-  await disconnect();
+  const version = ++connectionVersion;
   const p = new Pool(poolConfig(cfg, 5));
+  let nextMeta: DbMeta;
   try {
-    meta = await probe(p);
+    nextMeta = await probe(p);
+    if (version !== connectionVersion) throw new Error("Connection attempt superseded.");
   } catch (e) {
     await p.end().catch(() => {}); // don't leak the pool on a failed connect
     throw e;
   }
+  const previous = pool;
   pool = p;
+  meta = nextMeta;
+  // Drain old work without delaying publication of the new connection.
+  if (previous) void previous.end().catch(() => {});
   return { ...meta };
 }
 
@@ -74,12 +81,13 @@ export async function testConnect(cfg: ConnectConfig): Promise<DbMeta> {
 }
 
 export async function disconnect(): Promise<void> {
+  ++connectionVersion;
+  meta = { database: null, serverVersion: null, host: null };
   if (pool) {
     const p = pool;
     pool = null;
     await p.end().catch(() => {});
   }
-  meta = { database: null, serverVersion: null, host: null };
 }
 
 export async function listTables(): Promise<TableInfo[]> {
@@ -103,9 +111,9 @@ export async function listTables(): Promise<TableInfo[]> {
 
 export async function getColumns(
   schema: string,
-  table: string
+  table: string,
+  p: Pool = requirePool(),
 ): Promise<{ columns: Column[]; pk: string[] }> {
-  const p = requirePool();
   const colsSql = `
     select a.attname as name,
            format_type(a.atttypid, a.atttypmod) as data_type,
@@ -123,7 +131,9 @@ export async function getColumns(
     join pg_class c     on c.oid = i.indrelid
     join pg_namespace n on n.oid = c.relnamespace
     join pg_attribute a on a.attrelid = c.oid and a.attnum = any(i.indkey)
-    where i.indisprimary and n.nspname = $1 and c.relname = $2`;
+    where i.indisprimary and n.nspname = $1 and c.relname = $2
+      and a.attnum = any((i.indkey::smallint[])[0:i.indnkeyatts - 1])
+    order by a.attnum`;
 
   const [cols, pk] = await Promise.all([
     p.query(colsSql, [schema, table]),
@@ -150,20 +160,24 @@ export async function getColumns(
 export async function runQuery(
   schema: string,
   table: string,
-  opts: QueryOpts = {}
+  opts: QueryOpts = {},
 ): Promise<QueryResult> {
   const p = requirePool();
-  const { columns, pk } = await getColumns(schema, table);
+  const { columns, pk } = await getColumns(schema, table, p);
   const valid = new Set(columns.map((c) => c.name));
 
   const limit = Math.min(Math.max(Number(opts.limit) || 200, 1), 5000);
   const offset = Math.max(Number(opts.offset) || 0, 0);
 
-  let orderSql = "";
+  const order: string[] = [];
   if (opts.orderBy && valid.has(opts.orderBy)) {
     const dir = opts.dir === "desc" ? "desc" : "asc";
-    orderSql = ` order by ${quoteIdent(opts.orderBy)} ${dir}`;
+    order.push(`${quoteIdent(opts.orderBy)} ${dir}`);
   }
+  for (const key of pk) {
+    if (key !== opts.orderBy) order.push(`${quoteIdent(key)} asc`);
+  }
+  const orderSql = order.length ? ` order by ${order.join(", ")}` : "";
 
   // Structured per-column filters: column validated against the catalog,
   // operator whitelisted, value bound as a parameter (injection-safe). These
@@ -190,6 +204,9 @@ export async function runQuery(
     text: sql,
     values: [...fParams, limit + 1, offset],
     rowMode: "array",
+    // Preserve server text before pg parses JSON numbers, dates or arrays.
+    // Catalog queries retain pg's normal parsers for booleans and ordinals.
+    types: { getTypeParser: () => (value: string) => value },
   });
   const ms = Number(process.hrtime.bigint() - started) / 1e6;
 
@@ -223,14 +240,19 @@ export async function runQuery(
     offset,
     hasMore,
     ms: Math.round(ms * 10) / 10,
-    previewSql: `SELECT * FROM ${ref}${previewWhere}${orderSql.toUpperCase()} LIMIT ${limit} OFFSET ${offset}`,
+    previewSql: `SELECT * FROM ${ref}${previewWhere}${orderSql} LIMIT ${limit} OFFSET ${offset}`,
   };
 }
 
 // Comparison operators usable directly in SQL. Text-search and null operators
 // are handled specially below.
 const COMPARE_OPS: Record<string, string> = {
-  "=": "=", "!=": "<>", ">": ">", ">=": ">=", "<": "<", "<=": "<=",
+  "=": "=",
+  "!=": "<>",
+  ">": ">",
+  ">=": ">=",
+  "<": "<",
+  "<=": "<=",
 };
 
 // Turn structured filters into parameterized SQL clauses. Only columns that
@@ -238,7 +260,7 @@ const COMPARE_OPS: Record<string, string> = {
 // silently dropped (the renderer only ever sends valid ones).
 function compileFilters(
   filters: ColumnFilter[],
-  valid: Set<string>
+  valid: Set<string>,
 ): { clauses: string[]; params: Cell[] } {
   const clauses: string[] = [];
   const params: Cell[] = [];
@@ -251,8 +273,7 @@ function compileFilters(
       clauses.push(`${col} is not null`);
     } else if (f.op === "contains" || f.op === "starts" || f.op === "ends") {
       const v = f.value ?? "";
-      const pattern =
-        f.op === "contains" ? `%${v}%` : f.op === "starts" ? `${v}%` : `%${v}`;
+      const pattern = f.op === "contains" ? `%${v}%` : f.op === "starts" ? `${v}%` : `%${v}`;
       params.push(pattern);
       clauses.push(`${col}::text ilike $${params.length}`);
     } else if (COMPARE_OPS[f.op]) {
@@ -272,12 +293,44 @@ function previewFilters(filters: ColumnFilter[], valid: Set<string>): string[] {
     const col = quoteIdent(f.column);
     if (f.op === "isnull") out.push(`${col} IS NULL`);
     else if (f.op === "notnull") out.push(`${col} IS NOT NULL`);
-    else if (f.op === "contains") out.push(`${col}::text ILIKE ${literal("%" + (f.value ?? "") + "%")}`);
+    else if (f.op === "contains")
+      out.push(`${col}::text ILIKE ${literal("%" + (f.value ?? "") + "%")}`);
     else if (f.op === "starts") out.push(`${col}::text ILIKE ${literal((f.value ?? "") + "%")}`);
     else if (f.op === "ends") out.push(`${col}::text ILIKE ${literal("%" + (f.value ?? ""))}`);
     else if (COMPARE_OPS[f.op]) out.push(`${col} ${COMPARE_OPS[f.op]} ${literal(f.value ?? null)}`);
   }
   return out;
+}
+
+export async function countRows(
+  schema: string,
+  table: string,
+  opts: QueryOpts = {},
+): Promise<string> {
+  const p = requirePool();
+  const { columns } = await getColumns(schema, table, p);
+  const { clauses, params } = compileFilters(
+    opts.filters ?? [],
+    new Set(columns.map((c) => c.name)),
+  );
+  const where = opts.where?.trim();
+  if (where) clauses.unshift(`(${where})`);
+  const client = await p.connect();
+  try {
+    await client.query("begin read only");
+    await client.query("set local statement_timeout = '15s'");
+    const result = await client.query(
+      `select count(*)::text as count from ${quoteIdent(schema)}.${quoteIdent(table)}${clauses.length ? ` where ${clauses.join(" and ")}` : ""}`,
+      params,
+    );
+    await client.query("commit");
+    return result.rows[0].count;
+  } catch (error) {
+    await client.query("rollback").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 function serializeCell(v: unknown): Cell {
@@ -293,13 +346,13 @@ function serializeCell(v: unknown): Cell {
 export async function applyChanges(
   schema: string,
   table: string,
-  changes: RowChange[]
+  changes: RowChange[],
 ): Promise<ApplyResult> {
   const p = requirePool();
-  const { columns, pk } = await getColumns(schema, table);
+  const { columns, pk } = await getColumns(schema, table, p);
   if (pk.length === 0) {
     throw new Error(
-      `${schema}.${table} has no primary key — inline editing needs one to target rows safely.`
+      `${schema}.${table} has no primary key — inline editing needs one to target rows safely.`,
     );
   }
   const valid = new Set(columns.map((c) => c.name));
@@ -314,9 +367,7 @@ export async function applyChanges(
     await client.query("begin");
 
     for (const change of changes) {
-      const setCols = Object.keys(change.set).filter(
-        (c) => valid.has(c) && !pkSet.has(c)
-      );
+      const setCols = Object.keys(change.set).filter((c) => valid.has(c) && !pkSet.has(c));
       if (setCols.length === 0) continue;
 
       for (const k of pk) {
@@ -325,17 +376,12 @@ export async function applyChanges(
         }
       }
 
-      const setClause = setCols
-        .map((c, i) => `${quoteIdent(c)} = $${i + 1}`)
-        .join(", ");
+      const setClause = setCols.map((c, i) => `${quoteIdent(c)} = $${i + 1}`).join(", ");
       const whereClause = pk
         .map((c, i) => `${quoteIdent(c)} = $${setCols.length + i + 1}`)
         .join(" and ");
 
-      const params: Cell[] = [
-        ...setCols.map((c) => change.set[c]),
-        ...pk.map((c) => change.pk[c]),
-      ];
+      const params: Cell[] = [...setCols.map((c) => change.set[c]), ...pk.map((c) => change.pk[c])];
       const sql = `update ${ref} set ${setClause} where ${whereClause}`;
 
       const res = await client.query(sql, params);
@@ -343,7 +389,7 @@ export async function applyChanges(
         throw new Error(
           `No row matched ${pk
             .map((c) => `${c}=${change.pk[c]}`)
-            .join(", ")} — it may have been deleted or changed by someone else.`
+            .join(", ")} — it may have been deleted or changed by someone else.`,
         );
       }
       updated += res.rowCount ?? 0;
@@ -371,15 +417,11 @@ function renderStatement(
   table: string,
   setCols: string[],
   change: RowChange,
-  pk: string[]
+  pk: string[],
 ): string {
   const ref = `${quoteIdent(schema)}.${quoteIdent(table)}`;
-  const sets = setCols
-    .map((c) => `${quoteIdent(c)} = ${literal(change.set[c])}`)
-    .join(", ");
-  const where = pk
-    .map((c) => `${quoteIdent(c)} = ${literal(change.pk[c])}`)
-    .join(" AND ");
+  const sets = setCols.map((c) => `${quoteIdent(c)} = ${literal(change.set[c])}`).join(", ");
+  const where = pk.map((c) => `${quoteIdent(c)} = ${literal(change.pk[c])}`).join(" AND ");
   return `UPDATE ${ref} SET ${sets} WHERE ${where};`;
 }
 
