@@ -321,3 +321,45 @@ export function DatabaseModalIcon({ size = 20 }: IconProps) {
     </svg>
   );
 }
+
+export function RedoIcon({ size = 15 }: IconProps) {
+  return (
+    <Lucide
+      size={size}
+      path={
+        <>
+          <path d="m15 14 5-5-5-5" />
+          <path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5v0A5.5 5.5 0 0 0 9.5 20H13" />
+        </>
+      }
+    />
+  );
+}
+
+export function RefreshIcon({ size = 15 }: IconProps) {
+  return (
+    <Lucide
+      size={size}
+      path={
+        <>
+          <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+          <path d="M21 3v6h-6" />
+        </>
+      }
+    />
+  );
+}
+
+export function ColumnsIcon({ size = 14 }: IconProps) {
+  return (
+    <Lucide
+      size={size}
+      path={
+        <>
+          <rect x="3" y="4" width="18" height="16" rx="2" />
+          <path d="M9 4v16M15 4v16" />
+        </>
+      }
+    />
+  );
+}

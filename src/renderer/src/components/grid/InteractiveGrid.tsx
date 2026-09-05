@@ -1,4 +1,11 @@
-import { useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
+import {
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import { useTableState, useTableDispatch, useWorkspaceRequests } from "../../state/tableStore";
 import { useSourcesState } from "../../state/sourcesStore";
 import { useTableActions } from "../../hooks/useTableActions";
@@ -10,12 +17,25 @@ import { ColumnChooser } from "./ColumnChooser";
 import { GridHeaderCell } from "./GridHeaderCell";
 import { ColumnFilterPopover } from "./ColumnFilterPopover";
 import { ContextMenu } from "../common/ContextMenu";
+import { ColumnsIcon } from "../common/icons";
 import { ValueInspector } from "./ValueInspector";
 import { useToast } from "../../state/toastStore";
 
 import { InlineCellEditor } from "./InlineCellEditor";
 
-export function InteractiveGrid({ rows }: { rows: Record<string, Cell>[] }) {
+export function InteractiveGrid({
+  rows,
+  empty,
+  status,
+}: {
+  rows: Record<string, Cell>[];
+  // Rendered inside the data area (not above it) so the message sits where the
+  // rows would be instead of shoving the grid chrome down the page.
+  empty?: ReactNode;
+  // Pager/page-size/count, which belong to the view, share the grid's status
+  // bar rather than getting a second row of their own.
+  status?: ReactNode;
+}) {
   const state = useTableState();
   const { pk, dirty, offset, rows: allRows, current, loading } = state;
   const { connectedId } = useSourcesState();
@@ -38,7 +58,11 @@ export function InteractiveGrid({ rows }: { rows: Record<string, Cell>[] }) {
     .sort(
       (a, b) => Number(layout.pinned.includes(b.name)) - Number(layout.pinned.includes(a.name)),
     );
+  const allHidden = state.columns.length > 0 && columns.length === 0;
   const bounds = selectionBounds(anchor, selected);
+  const selectedCells = rows.length
+    ? (bounds.bottom - bounds.top + 1) * (bounds.right - bounds.left + 1)
+    : 0;
   const selectedRow = rows[selected.row];
   const selectedColumn = columns[selected.col];
   const rowKeys = useMemo(
@@ -164,184 +188,160 @@ export function InteractiveGrid({ rows }: { rows: Record<string, Cell>[] }) {
   }
   return (
     <>
-      <div className="grid-tools">
-        <button
-          className="btn ghost"
-          aria-expanded={columnsOpen}
-          onClick={() => setColumnsOpen(!columnsOpen)}
-        >
-          Columns
-        </button>
-        <button
-          className="btn ghost"
-          disabled={!selectedRow}
-          aria-pressed={inspecting}
-          onClick={() => setInspecting(!inspecting)}
-        >
-          Value inspector <kbd>F2</kbd>
-        </button>
-        <button className="btn ghost" disabled={!selectedRow} onClick={copy}>
-          Copy selection <kbd>⌘/Ctrl C</kbd>
-        </button>
-        <span className="muted">
-          {rows.length ? (bounds.bottom - bounds.top + 1) * (bounds.right - bounds.left + 1) : 0}{" "}
-          cells selected · NULL copies as blank
-        </span>
-      </div>
-      {columnsOpen && (
-        <ColumnChooser
-          columns={state.columns}
-          layout={layout}
-          setLayout={setLayout}
-          onChange={() => {
-            setEditing(null);
-            setSelected({ row: 0, col: 0 });
-            setAnchor({ row: 0, col: 0 });
-          }}
-          onClose={() => setColumnsOpen(false)}
-        />
-      )}
       <div className="grid-layout">
         <div className="grid-scroll" aria-busy={loading}>
-          <table
-            ref={tableRef}
-            className="interactive-grid"
-            role="grid"
-            aria-label="Table data"
-            tabIndex={0}
-            aria-rowcount={rows.length + 1}
-            aria-colcount={columns.length + 1}
-            aria-activedescendant={
-              selectedRow && selectedColumn ? `cell-${selected.row}-${selected.col}` : undefined
-            }
-            style={tableStyle}
-            onKeyDown={onKeyDown}
-          >
-            <thead>
-              <tr>
-                <th className="gutter-h" aria-label="Row number" />
-                {columns.map((col, i) => (
-                  <GridHeaderCell
-                    key={col.name}
-                    column={col}
-                    index={i}
-                    currentWidth={layout.widths[col.name] ?? 160}
-                    sorted={state.sortCol === col.name}
-                    sortDir={state.sortDir}
-                    filtered={!!state.colFilters[col.name]}
-                    onSortClick={() => {
-                      if (!loading) void setSort(col.name);
-                    }}
-                    onFunnelClick={(anchor) => setFunnel({ col: col.name, anchor })}
-                    onResizeStart={(event) => resize(event, col.name)}
-                    onAutoFit={() =>
-                      autoFit(
-                        col.name,
-                        rows.map((row) => describeValue(valueOf(row, col.name))),
-                        getComputedStyle(tableRef.current!).font,
-                      )
-                    }
-                    stickyStyle={pinnedStyle(i)}
-                  />
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, r) => (
-                <tr key={keyOf(row)}>
-                  <td
-                    className="gutter"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      setAnchor({ row: r, col: 0 });
-                      setSelected({ row: r, col: columns.length - 1 });
-                      focus();
-                    }}
-                  >
-                    {offset + allRows.indexOf(row) + 1}
-                  </td>
-                  {columns.map((col, c) => {
-                    const value = valueOf(row, col.name),
-                      point = { row: r, col: c };
-                    const inRange =
-                      r >= bounds.top &&
-                      r <= bounds.bottom &&
-                      c >= bounds.left &&
-                      c <= bounds.right;
-                    const isEditing = editing?.row === r && editing.col === c;
-                    return (
-                      <td
-                        key={col.name}
-                        id={`cell-${r}-${c}`}
-                        data-row={r}
-                        data-col={c}
-                        role="gridcell"
-                        aria-selected={inRange}
-                        aria-readonly={!editable(col)}
-                        title={describeValue(value)}
-                        className={[
-                          inRange ? "selected" : "",
-                          dirty[dirtyKey(keyOf(row), col.name)] ? "dirty" : "",
-                          layout.pinned.includes(col.name) ? "pinned" : "",
-                          /^(smallint|integer|bigint|numeric|real|double|decimal)/i.test(
-                            col.dataType,
-                          )
-                            ? "num"
-                            : "",
-                        ].join(" ")}
-                        style={{
-                          width: layout.widths[col.name] ?? 160,
-                          maxWidth: layout.widths[col.name] ?? 160,
-                          ...pinnedStyle(c),
-                        }}
-                        onMouseDown={(e) => {
-                          if (isEditing || e.button !== 0) return;
-                          e.preventDefault();
-                          move(point, e.shiftKey);
-                          focus();
-                        }}
-                        onMouseEnter={(e) => {
-                          if (e.buttons === 1 && !editing) move(point, true);
-                        }}
-                        onDoubleClick={() => {
-                          if (editable(col)) setEditing(point);
-                          else setInspecting(true);
-                        }}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          if (!inRange) move(point);
-                          focus();
-                          setMenu({ x: e.clientX, y: e.clientY });
-                        }}
-                      >
-                        {isEditing ? (
-                          <InlineCellEditor
-                            value={value}
-                            onCommit={(text) => {
-                              commit(point, text);
-                              setEditing(null);
-                              focus();
-                            }}
-                            onCancel={() => {
-                              setEditing(null);
-                              focus();
-                            }}
-                            onAdvance={advance}
-                          />
-                        ) : (
-                          <span
-                            className={`cell ${value === null || value.trim() === "" ? "special-value" : ""}`}
-                          >
-                            {describeValue(value)}
-                          </span>
-                        )}
-                      </td>
-                    );
-                  })}
+          {columns.length > 0 && (
+            <table
+              ref={tableRef}
+              className="interactive-grid"
+              role="grid"
+              aria-label="Table data"
+              tabIndex={0}
+              aria-rowcount={rows.length + 1}
+              aria-colcount={columns.length + 1}
+              aria-activedescendant={
+                selectedRow && selectedColumn ? `cell-${selected.row}-${selected.col}` : undefined
+              }
+              style={tableStyle}
+              onKeyDown={onKeyDown}
+            >
+              <thead>
+                <tr>
+                  <th className="gutter-h" aria-label="Row number" />
+                  {columns.map((col, i) => (
+                    <GridHeaderCell
+                      key={col.name}
+                      column={col}
+                      index={i}
+                      currentWidth={layout.widths[col.name] ?? 160}
+                      sorted={state.sortCol === col.name}
+                      sortDir={state.sortDir}
+                      filtered={!!state.colFilters[col.name]}
+                      onSortClick={() => {
+                        if (!loading) void setSort(col.name);
+                      }}
+                      onFunnelClick={(anchor) => setFunnel({ col: col.name, anchor })}
+                      onResizeStart={(event) => resize(event, col.name)}
+                      onAutoFit={() =>
+                        autoFit(
+                          col.name,
+                          rows.map((row) => describeValue(valueOf(row, col.name))),
+                          getComputedStyle(tableRef.current!).font,
+                        )
+                      }
+                      stickyStyle={pinnedStyle(i)}
+                    />
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {rows.map((row, r) => (
+                  <tr key={keyOf(row)}>
+                    <td
+                      className="gutter"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setAnchor({ row: r, col: 0 });
+                        setSelected({ row: r, col: columns.length - 1 });
+                        focus();
+                      }}
+                    >
+                      {offset + allRows.indexOf(row) + 1}
+                    </td>
+                    {columns.map((col, c) => {
+                      const value = valueOf(row, col.name),
+                        point = { row: r, col: c };
+                      const inRange =
+                        r >= bounds.top &&
+                        r <= bounds.bottom &&
+                        c >= bounds.left &&
+                        c <= bounds.right;
+                      const isEditing = editing?.row === r && editing.col === c;
+                      return (
+                        <td
+                          key={col.name}
+                          id={`cell-${r}-${c}`}
+                          data-row={r}
+                          data-col={c}
+                          role="gridcell"
+                          aria-selected={inRange}
+                          aria-readonly={!editable(col)}
+                          title={describeValue(value)}
+                          className={[
+                            inRange ? "selected" : "",
+                            r === selected.row && c === selected.col ? "focused" : "",
+                            dirty[dirtyKey(keyOf(row), col.name)] ? "dirty" : "",
+                            layout.pinned.includes(col.name) ? "pinned" : "",
+                            /^(smallint|integer|bigint|numeric|real|double|decimal)/i.test(
+                              col.dataType,
+                            )
+                              ? "num"
+                              : "",
+                          ].join(" ")}
+                          style={{
+                            width: layout.widths[col.name] ?? 160,
+                            maxWidth: layout.widths[col.name] ?? 160,
+                            ...pinnedStyle(c),
+                          }}
+                          onMouseDown={(e) => {
+                            if (isEditing || e.button !== 0) return;
+                            e.preventDefault();
+                            move(point, e.shiftKey);
+                            focus();
+                          }}
+                          onMouseEnter={(e) => {
+                            if (e.buttons === 1 && !editing) move(point, true);
+                          }}
+                          onDoubleClick={() => {
+                            if (editable(col)) setEditing(point);
+                            else setInspecting(true);
+                          }}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            if (!inRange) move(point);
+                            focus();
+                            setMenu({ x: e.clientX, y: e.clientY });
+                          }}
+                        >
+                          {isEditing ? (
+                            <InlineCellEditor
+                              value={value}
+                              onCommit={(text) => {
+                                commit(point, text);
+                                setEditing(null);
+                                focus();
+                              }}
+                              onCancel={() => {
+                                setEditing(null);
+                                focus();
+                              }}
+                              onAdvance={advance}
+                            />
+                          ) : (
+                            <span
+                              className={`cell ${value === null || value.trim() === "" ? "special-value" : ""}`}
+                            >
+                              {describeValue(value)}
+                            </span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {allHidden ? (
+            <div className="grid-empty">
+              <strong>All columns are hidden</strong>
+              <button className="btn ghost" onClick={() => setColumnsOpen(true)}>
+                Choose columns
+              </button>
+            </div>
+          ) : empty ? (
+            <div className="grid-empty">{empty}</div>
+          ) : null}
         </div>
         {inspecting && selectedRow && selectedColumn && (
           <ValueInspector
@@ -361,6 +361,34 @@ export function InteractiveGrid({ rows }: { rows: Record<string, Cell>[] }) {
           />
         )}
       </div>
+      {columnsOpen && (
+        <ColumnChooser
+          columns={state.columns}
+          layout={layout}
+          setLayout={setLayout}
+          onChange={() => {
+            setEditing(null);
+            setSelected({ row: 0, col: 0 });
+            setAnchor({ row: 0, col: 0 });
+          }}
+          onClose={() => setColumnsOpen(false)}
+        />
+      )}
+      <footer className="table-status">
+        {status}
+        <span className="spacer" />
+        {selectedCells > 1 && <span>{selectedCells} cells selected</span>}
+        {state.columns.length > 0 && (
+          <button
+            className="btn ghost"
+            aria-expanded={columnsOpen}
+            title="Show, hide and pin columns"
+            onClick={() => setColumnsOpen(!columnsOpen)}
+          >
+            <ColumnsIcon size={13} /> Columns
+          </button>
+        )}
+      </footer>
       {funnel && (
         <ColumnFilterPopover
           column={funnel.col}
