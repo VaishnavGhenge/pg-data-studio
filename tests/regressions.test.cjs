@@ -428,8 +428,19 @@ test("NULL, empty strings and whitespace are distinct pending edits", () => {
 
 test("selection bounds work in both drag directions and TSV quotes delimiters", () => {
   const { selectionBounds, toTsv } = load("src/renderer/src/lib/gridSelection.ts");
-  assert.deepEqual(selectionBounds({ row: 3, col: 2 }, { row: 1, col: 0 }), { top: 1, bottom: 3, left: 0, right: 2 });
-  assert.equal(toTsv([["a\tb", 'say "hi"', null], ["line\nbreak", "", "x"]]), '"a\tb"\t"say ""hi"""\t\n"line\nbreak"\t\tx');
+  assert.deepEqual(selectionBounds({ row: 3, col: 2 }, { row: 1, col: 0 }), {
+    top: 1,
+    bottom: 3,
+    left: 0,
+    right: 2,
+  });
+  assert.equal(
+    toTsv([
+      ["a\tb", 'say "hi"', null],
+      ["line\nbreak", "", "x"],
+    ]),
+    '"a\tb"\t"say ""hi"""\t\n"line\nbreak"\t\tx',
+  );
 });
 
 test("JSON formatting preserves number tokens and escaped strings", () => {
@@ -439,11 +450,18 @@ test("JSON formatting preserves number tokens and escaped strings", () => {
   assert.match(formatted, /9007199254740993/);
   assert.match(formatted, /1e1000/);
   assert.deepEqual(JSON.parse(formatted), JSON.parse(text));
-  assert.throws(() => formatJson('{bad'));
+  assert.throws(() => formatJson("{bad"));
 });
 
 function edit(state, value) {
-  return tableReducer(state, { type: "COMMIT_CELL", rowKey: "row", col: "name", pkVals: { id: "1" }, orig: "original", val: value });
+  return tableReducer(state, {
+    type: "COMMIT_CELL",
+    rowKey: "row",
+    col: "name",
+    pkVals: { id: "1" },
+    orig: "original",
+    val: value,
+  });
 }
 
 test("undo and redo retain exact values and new edits clear redo history", () => {
@@ -478,10 +496,12 @@ test("tab switching and closing preserve each tab's unsaved changes", () => {
 
 test("retry repeats the failed query rather than the last successful filter", async () => {
   const queries = [];
-  const w = workspace({ query: (_, __, opts) => {
-    queries.push(opts);
-    return Promise.resolve(opts.where ? { ok: false, error: "bad filter" } : result("initial"));
-  } });
+  const w = workspace({
+    query: (_, __, opts) => {
+      queries.push(opts);
+      return Promise.resolve(opts.where ? { ok: false, error: "bad filter" } : result("initial"));
+    },
+  });
   await w.table().openTable("public", "A");
   await w.table().applyWhere("bad");
   await w.table().retry();
@@ -493,9 +513,15 @@ test("retry repeats the failed query rather than the last successful filter", as
 
 test("page size changes reset the offset and subsequent pages use the new size", async () => {
   const queries = [];
-  const w = workspace({ query: (_, __, opts) => {
-    queries.push(opts); return Promise.resolve({ ...result("page"), data: { ...result("page").data, offset: opts.offset } });
-  } });
+  const w = workspace({
+    query: (_, __, opts) => {
+      queries.push(opts);
+      return Promise.resolve({
+        ...result("page"),
+        data: { ...result("page").data, offset: opts.offset },
+      });
+    },
+  });
   await w.table().openTable("public", "A");
   await w.table().refresh(500);
   assert.equal(w.state.pageSize, 500);
@@ -507,7 +533,13 @@ test("page size changes reset the offset and subsequent pages use the new size",
 
 test("disconnect also checks edits in background tabs", async () => {
   let disconnected = false;
-  const w = workspace({ query: async () => result("page"), disconnect: async () => { disconnected = true; return ok(true); } });
+  const w = workspace({
+    query: async () => result("page"),
+    disconnect: async () => {
+      disconnected = true;
+      return ok(true);
+    },
+  });
   await w.table().openTable("public", "A");
   w.state.dirty = { pending: {} };
   await w.table().openTable("public", "B");

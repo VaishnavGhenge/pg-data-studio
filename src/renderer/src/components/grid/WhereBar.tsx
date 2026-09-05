@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { CodeIcon, CornerDownLeftIcon } from "../common/icons";
 import { SqlEditor } from "./SqlEditor";
 
 interface WhereBarProps {
@@ -12,6 +11,7 @@ interface WhereBarProps {
 
 export function WhereBar({ appliedWhere, columns, tableName, onApply, disabled }: WhereBarProps) {
   const [text, setText] = useState(appliedWhere);
+  const pending = text.trim() !== appliedWhere;
 
   // Re-sync the displayed text only when the *applied* value actually
   // changes (a successful apply/clear) — not on every render — so an
@@ -22,11 +22,13 @@ export function WhereBar({ appliedWhere, columns, tableName, onApply, disabled }
 
   return (
     <div className="wherebar">
-      <span className="wherebar-kw" title="WHERE clause — raw SQL" aria-label="WHERE clause">
-        <CodeIcon size={13} />
+      <span className="wherebar-kw" title="WHERE clause — raw SQL" aria-hidden="true">
+        WHERE
       </span>
       <SqlEditor
-        className={"wherebar-input" + (appliedWhere !== "" ? " active" : "")}
+        className={
+          "wherebar-input" + (appliedWhere !== "" ? " active" : "") + (pending ? " pending" : "")
+        }
         value={text}
         onChange={setText}
         onEnter={() => {
@@ -38,25 +40,14 @@ export function WhereBar({ appliedWhere, columns, tableName, onApply, disabled }
         tableName={tableName}
         columnNames={columns.map((c) => c.name)}
       />
-      <span className="where-state">
-        {text.trim() !== appliedWhere ? "Not applied" : appliedWhere ? "Applied" : "WHERE"}
-      </span>
-      <button
-        className="btn ghost"
-        disabled={disabled || text.trim() === appliedWhere}
-        onClick={() => onApply(text.trim())}
-      >
-        Apply
-      </button>
-      {text === "" && (
-        <span className="wherebar-hint">
-          <kbd className="wherebar-key">
-            <CornerDownLeftIcon size={11} />
-          </kbd>
-          to apply
-        </span>
+      {/* Apply only earns a slot once the text differs from what ran; Enter
+          does the same thing and the button is dead weight until then. */}
+      {pending && (
+        <button className="btn primary" disabled={disabled} onClick={() => onApply(text.trim())}>
+          Apply
+        </button>
       )}
-      {appliedWhere !== "" && (
+      {!pending && appliedWhere !== "" && (
         <button
           className="wherebar-clear"
           title="Clear filter"

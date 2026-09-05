@@ -7,6 +7,7 @@ import { buildUpdatePreview } from "../../lib/sqlPreview";
 import { dirtyKey, groupDirtyByRow } from "../../lib/dirty";
 import { displayRowKey } from "../../lib/rowKey";
 import { InteractiveGrid } from "./InteractiveGrid";
+import { RefreshIcon, UndoIcon, RedoIcon, CloseIcon } from "../common/icons";
 import { WhereBar } from "./WhereBar";
 import { Pager } from "./Pager";
 import { SaveConfirmModal } from "./SaveConfirmModal";
@@ -138,42 +139,64 @@ export function TableView() {
         )}
       </div>
       <div className="toolbar">
-        <input
-          ref={searchRef}
-          className="filter page-search"
-          placeholder="Search this page…"
-          aria-label="Search this page"
-          value={quickFilter}
-          onChange={(e) => setQuickFilter(e.target.value)}
-        />
-        {quickFilter && (
-          <button className="btn ghost" onClick={() => setQuickFilter("")}>
-            Clear search
-          </button>
-        )}
-        <button className="btn ghost" disabled={blocked} onClick={() => actions.refresh()}>
-          Refresh
+        <div className="search-wrap">
+          <input
+            ref={searchRef}
+            className="filter page-search"
+            placeholder="Search this page…"
+            aria-label="Search this page"
+            value={quickFilter}
+            onChange={(e) => setQuickFilter(e.target.value)}
+          />
+          {quickFilter && (
+            <button
+              className="search-clear"
+              aria-label="Clear search"
+              onClick={() => setQuickFilter("")}
+            >
+              <CloseIcon size={12} />
+            </button>
+          )}
+        </div>
+        <button
+          className="btn ghost icon-only"
+          title="Refresh this page of rows"
+          aria-label="Refresh"
+          disabled={blocked}
+          onClick={() => actions.refresh()}
+        >
+          <RefreshIcon size={14} />
         </button>
         <span className="spacer" />
         <button
-          className="btn ghost"
+          className="btn ghost icon-only"
           title="Undo pending edit (⌘/Ctrl Z)"
+          aria-label="Undo"
           disabled={!state.past.length || blocked}
           onClick={actions.undo}
         >
-          Undo
+          <UndoIcon size={14} />
         </button>
         <button
-          className="btn ghost"
+          className="btn ghost icon-only"
           title="Redo pending edit (⌘/Ctrl Shift Z)"
+          aria-label="Redo"
           disabled={!state.future.length || blocked}
           onClick={actions.redo}
         >
-          Redo
+          <RedoIcon size={14} />
         </button>
-        <button className="btn ghost" disabled={!dirtyCount || blocked} onClick={actions.revertAll}>
-          Revert all
-        </button>
+        {/* Revert all is dead weight with nothing to revert, so it only shows
+            up once there are pending edits. Save stays put: it anchors the
+            row and its count is the edit tally. */}
+        {dirtyCount > 0 && (
+          <>
+            <span className="toolbar-divider" />
+            <button className="btn ghost" disabled={blocked} onClick={actions.revertAll}>
+              Revert all
+            </button>
+          </>
+        )}
         <button
           className="btn primary"
           title="Review changes (⌘/Ctrl Enter)"
@@ -190,39 +213,25 @@ export function TableView() {
         onApply={actions.applyWhere}
         disabled={blocked}
       />
-      {(hasFilters || state.sortCol || dirtyCount > 0) && (
+      {/* The WHERE clause is already spelled out in the bar above with its own
+          clear button, so it gets no chip here. This row is for the filters
+          that have nowhere else to show themselves. */}
+      {(Object.keys(state.colFilters).length > 0 || state.sortCol) && (
         <div className="filter-chips">
-          {state.where && (
-            <button
-              disabled={blocked}
-              onClick={() => actions.applyWhere("")}
-              title="Remove WHERE filter"
-            >
-              WHERE: {state.where} ×
-            </button>
-          )}
           {Object.entries(state.colFilters).map(([col, f]) => (
             <button key={col} disabled={blocked} onClick={() => actions.applyColFilter(col, null)}>
               {col} {f.op} {f.value} ×
             </button>
           ))}
-          {(hasFilters || state.sortCol) && (
-            <button
-              disabled={blocked}
-              onClick={() => {
-                setQuickFilter("");
-                void actions.resetFilters();
-              }}
-            >
-              Reset filters & sort
-            </button>
-          )}
-          {dirtyCount > 0 && (
-            <span className="pending-count">
-              {dirtyCount} {dirtyCount === 1 ? "cell" : "cells"} in {changedRows}{" "}
-              {changedRows === 1 ? "row" : "rows"} changed
-            </span>
-          )}
+          <button
+            disabled={blocked}
+            onClick={() => {
+              setQuickFilter("");
+              void actions.resetFilters();
+            }}
+          >
+            Reset filters & sort
+          </button>
         </div>
       )}
       {state.loading && (
@@ -241,83 +250,97 @@ export function TableView() {
           </button>
         </div>
       )}
-      {!state.loading && !state.error && visibleRows.length === 0 && (
-        <div className="empty-result">
-          <strong>{hasFilters || quickFilter ? "No matching rows" : "This table is empty"}</strong>
-          {(hasFilters || quickFilter) && (
-            <button
-              className="btn ghost"
-              onClick={() => {
-                setQuickFilter("");
-                void actions.resetFilters();
-              }}
-            >
-              Clear filters
-            </button>
-          )}
-        </div>
-      )}
-      <InteractiveGrid key={resultKey} rows={visibleRows} />
-      {state.previewSql && (
-        <details className="query-preview">
-          <summary>Generated SQL</summary>
-          <div>
-            <pre>{state.previewSql}</pre>
-            <button
-              className="btn ghost"
-              onClick={() =>
-                navigator.clipboard.writeText(state.previewSql).then(
-                  () => toast("Copied query"),
-                  () => toast("Could not copy query", true),
-                )
-              }
-            >
-              Copy SQL
-            </button>
-          </div>
-        </details>
-      )}
-      <footer className="table-status">
-        <Pager
-          offset={state.offset}
-          loadedRowCount={state.rows.length}
-          hasMore={state.hasMore}
-          disabled={blocked}
-          onPrev={() => actions.goToPage(-1)}
-          onNext={() => actions.goToPage(1)}
-        />
-        <label>
-          Page size{" "}
-          <select
-            aria-label="Page size"
-            disabled={blocked}
-            value={state.pageSize}
-            onChange={(e) => actions.refresh(Number(e.target.value))}
-          >
-            {[200, 500, 1000].map((size) => (
-              <option key={size} value={size}>
-                {size}
-              </option>
-            ))}
-          </select>
-        </label>
-        <span>
-          {visibleRows.length} shown · {state.ms} ms
-        </span>
-        <span className="spacer" />
-        {count !== null ? (
-          <span>{count} matching rows</span>
-        ) : (
-          <button className="btn ghost" disabled={blocked || counting} onClick={exactCount}>
-            {counting ? "Counting…" : "Count matching rows"}
-          </button>
-        )}
-        {countError && (
-          <span className="inline-error" role="alert">
-            {countError}
-          </span>
-        )}
-      </footer>
+      <InteractiveGrid
+        key={resultKey}
+        rows={visibleRows}
+        empty={
+          !state.loading && !state.error && visibleRows.length === 0 ? (
+            <>
+              <strong>
+                {hasFilters || quickFilter ? "No matching rows" : "This table is empty"}
+              </strong>
+              {(hasFilters || quickFilter) && (
+                <button
+                  className="btn ghost"
+                  onClick={() => {
+                    setQuickFilter("");
+                    void actions.resetFilters();
+                  }}
+                >
+                  Clear filters
+                </button>
+              )}
+            </>
+          ) : null
+        }
+        status={
+          <>
+            <Pager
+              offset={state.offset}
+              loadedRowCount={state.rows.length}
+              hasMore={state.hasMore}
+              disabled={blocked}
+              onPrev={() => actions.goToPage(-1)}
+              onNext={() => actions.goToPage(1)}
+            />
+            <label>
+              Page size{" "}
+              <select
+                aria-label="Page size"
+                disabled={blocked}
+                value={state.pageSize}
+                onChange={(e) => actions.refresh(Number(e.target.value))}
+              >
+                {[200, 500, 1000].map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <span>
+              {visibleRows.length} shown · {state.ms} ms
+            </span>
+            {dirtyCount > 0 && (
+              <span className="pending-count">
+                {dirtyCount} {dirtyCount === 1 ? "cell" : "cells"} in {changedRows}{" "}
+                {changedRows === 1 ? "row" : "rows"} changed
+              </span>
+            )}
+            {count !== null ? (
+              <span>{count} matching rows</span>
+            ) : (
+              <button className="btn ghost" disabled={blocked || counting} onClick={exactCount}>
+                {counting ? "Counting…" : "Count matching rows"}
+              </button>
+            )}
+            {state.previewSql && (
+              <details className="query-preview">
+                <summary>SQL</summary>
+                <div>
+                  <pre>{state.previewSql}</pre>
+                  <button
+                    className="btn ghost"
+                    onClick={() =>
+                      navigator.clipboard.writeText(state.previewSql).then(
+                        () => toast("Copied query"),
+                        () => toast("Could not copy query", true),
+                      )
+                    }
+                  >
+                    Copy SQL
+                  </button>
+                </div>
+              </details>
+            )}
+            {countError && (
+              <span className="inline-error" role="alert">
+                {countError}
+              </span>
+            )}
+          </>
+        }
+      />
       <SaveConfirmModal
         open={previewOpen}
         statements={buildUpdatePreview(

@@ -139,10 +139,10 @@ async function main() {
       await evaluate(`document.querySelector('.pending-count').textContent`),
       /1 cell in 1 row/,
     );
-    await evaluate(`clickText('Undo')`);
+    await evaluate(`document.querySelector('[aria-label="Undo"]').click()`);
     await delay(30);
     assert.equal(await evaluate(`document.querySelector('.pending-count')`), null);
-    await evaluate(`clickText('Redo')`);
+    await evaluate(`document.querySelector('[aria-label="Redo"]').click()`);
     await delay(30);
     await evaluate(
       `[...document.querySelectorAll('.nrow.table')].find(e=>e.textContent.includes('books')).click()`,

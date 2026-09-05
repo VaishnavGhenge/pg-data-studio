@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Sidebar } from "../navigator/Sidebar";
 import { SourceModal } from "../navigator/SourceModal";
 import { Splitter } from "./Splitter";
@@ -25,6 +25,13 @@ export function AppShell() {
     open: false,
     source: null,
   });
+  const activeTabRef = useRef<HTMLDivElement | null>(null);
+
+  // A tab opened from the sidebar is appended at the end of the strip, which is
+  // off-screen once there are more tabs than fit. Pull it back into view.
+  useEffect(() => {
+    activeTabRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [current?.schema, current?.name, state.tabs.length]);
 
   // Load saved sources on boot; if there are none yet, prompt to add one —
   // matches the old renderer's boot().
@@ -118,7 +125,11 @@ export function AppShell() {
                 Object.keys(active ? state.dirty : (state.snapshots[id]?.dirty ?? {})).length > 0;
               const favorite = favorites.some((t) => tableId(t.schema, t.name) === id);
               return (
-                <div className={"table-tab" + (active ? " active" : "")} key={id}>
+                <div
+                  className={"table-tab" + (active ? " active" : "")}
+                  key={id}
+                  ref={active ? activeTabRef : undefined}
+                >
                   <button
                     className="favorite-button"
                     aria-label={(favorite ? "Unfavorite " : "Favorite ") + tab.name}
