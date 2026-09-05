@@ -10,9 +10,18 @@ interface SidebarProps {
   onOpenTable: (schema: string, table: string) => void;
   onNewSource: () => void;
   onEditSource: (id: string) => void;
+  favorites?: { schema: string; name: string }[];
+  recent?: { schema: string; name: string }[];
 }
 
-export function Sidebar({ sideRef, onOpenTable, onNewSource, onEditSource }: SidebarProps) {
+export function Sidebar({
+  sideRef,
+  onOpenTable,
+  onNewSource,
+  onEditSource,
+  favorites = [],
+  recent = [],
+}: SidebarProps) {
   // The input shows exactly what was typed (including a trailing space);
   // only the trimmed value is used for matching, same as the old renderer.
   const [filterRaw, setFilterRaw] = useState("");
@@ -74,9 +83,32 @@ export function Sidebar({ sideRef, onOpenTable, onNewSource, onEditSource }: Sid
         ref={treeRegionRef}
         className="tree-focus-region"
         tabIndex={-1}
-        onMouseDown={() => treeRegionRef.current?.focus()}
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget) treeRegionRef.current?.focus();
+        }}
         onKeyDown={handleTreeKeyDown}
       >
+        {connectedId &&
+          [
+            { label: "Favorites", items: favorites },
+            { label: "Recent tables", items: recent },
+          ].map(
+            ({ label, items }) =>
+              items.length > 0 && (
+                <details className="table-shortcuts" key={label} open={label === "Favorites"}>
+                  <summary>{label}</summary>
+                  {items
+                    .filter((t) =>
+                      (t.schema + "." + t.name).toLowerCase().includes(filterRaw.toLowerCase()),
+                    )
+                    .map((t) => (
+                      <button key={JSON.stringify(t)} onClick={() => onOpenTable(t.schema, t.name)}>
+                        {t.schema}.{t.name}
+                      </button>
+                    ))}
+                </details>
+              ),
+          )}
         <NavigatorTree
           filter={filterRaw.trim()}
           refreshSignal={refreshSignal}

@@ -18,6 +18,8 @@ interface GridHeaderCellProps {
   onSortClick: () => void;
   onFunnelClick: (anchor: HTMLElement) => void;
   onResizeStart: (e: MouseEvent<HTMLDivElement>, index: number) => void;
+  onAutoFit?: () => void;
+  stickyStyle?: CSSProperties;
 }
 
 export function GridHeaderCell({
@@ -30,6 +32,8 @@ export function GridHeaderCell({
   onSortClick,
   onFunnelClick,
   onResizeStart,
+  onAutoFit,
+  stickyStyle,
 }: GridHeaderCellProps) {
   // Falls back to the stylesheet's default (auto width) until the column has
   // actually been dragged — `var()` referencing an undefined custom property
@@ -60,27 +64,39 @@ export function GridHeaderCell({
   return (
     <th
       className={(sorted ? "sorted " : "") + (filtered ? "filtered" : "")}
-      style={style}
+      style={{ ...style, ...stickyStyle, zIndex: stickyStyle?.position ? 5 : undefined }}
+      aria-sort={sorted ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
       onClick={onSortClick}
     >
       <div className="th">
-        <span onMouseEnter={showTitleIfTruncated}>{column.name}</span>
+        <button
+          className="header-sort"
+          title={`${column.name}: ${column.dataType}${column.notNull ? " · NOT NULL" : ""}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onSortClick();
+          }}
+          onMouseEnter={showTitleIfTruncated}
+        >
+          {column.name}
+        </button>
         {column.isPk && <span className="pkbadge">PK</span>}
         {showType && (
           <span className="typ" onMouseEnter={showTitleIfTruncated}>
             {column.dataType}
           </span>
         )}
-        <span
+        <button
           className={"funnel" + (filtered ? " on" : "")}
           title="Filter column"
-          onClick={(e: MouseEvent<HTMLSpanElement>) => {
+          aria-label={`Filter ${column.name}`}
+          onClick={(e: MouseEvent<HTMLButtonElement>) => {
             e.stopPropagation();
             onFunnelClick(e.currentTarget);
           }}
         >
           <FunnelIcon size={11} />
-        </span>
+        </button>
         <span className="sort">
           {sorted && (sortDir === "asc" ? <ArrowUpIcon size={12} /> : <ArrowDownIcon size={12} />)}
         </span>
@@ -97,6 +113,10 @@ export function GridHeaderCell({
           onResizeStart(e, index);
         }}
         onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          onAutoFit?.();
+        }}
       />
     </th>
   );

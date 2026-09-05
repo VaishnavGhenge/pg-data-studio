@@ -70,19 +70,14 @@ function createWindow(): void {
 // renderer would show a blank error message.
 function errorMessage(err: unknown): string {
   if (err instanceof AggregateError && err.errors.length) {
-    const sub = err.errors
-      .map((e) => (e instanceof Error ? e.message : String(e)))
-      .filter(Boolean);
+    const sub = err.errors.map((e) => (e instanceof Error ? e.message : String(e))).filter(Boolean);
     if (sub.length) return sub.join("; ");
   }
   if (err instanceof Error) return err.message || err.name;
   return String(err);
 }
 
-function handle<T>(
-  channel: string,
-  fn: (...args: any[]) => Promise<T>
-): void {
+function handle<T>(channel: string, fn: (...args: any[]) => Promise<T>): void {
   ipcMain.handle(channel, async (_event, ...args): Promise<IpcResult<T>> => {
     try {
       return { ok: true, data: await fn(...args) };
@@ -110,17 +105,20 @@ handle<TableInfo[]>("db:listTables", async () => db.listTables());
 
 handle<{ columns: Column[]; pk: string[] }>(
   "db:tableColumns",
-  async (schema: string, table: string) => db.getColumns(schema, table)
+  async (schema: string, table: string) => db.getColumns(schema, table),
 );
 
 handle<QueryResult>("db:query", async (schema: string, table: string, opts: QueryOpts) =>
-  db.runQuery(schema, table, opts)
+  db.runQuery(schema, table, opts),
+);
+handle<string>("db:countRows", async (schema: string, table: string, opts: QueryOpts) =>
+  db.countRows(schema, table, opts),
 );
 
 handle<ApplyResult>(
   "db:applyChanges",
   async (schema: string, table: string, changes: RowChange[]) =>
-    db.applyChanges(schema, table, changes)
+    db.applyChanges(schema, table, changes),
 );
 
 handle<Source[]>("store:list", async () => store.listSources());

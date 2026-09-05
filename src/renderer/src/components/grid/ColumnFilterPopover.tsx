@@ -9,7 +9,13 @@ interface ColumnFilterPopoverProps {
   onClose: () => void;
 }
 
-export function ColumnFilterPopover({ column, anchor, current, onApply, onClose }: ColumnFilterPopoverProps) {
+export function ColumnFilterPopover({
+  column,
+  anchor,
+  current,
+  onApply,
+  onClose,
+}: ColumnFilterPopoverProps) {
   const [op, setOp] = useState<FilterOp>(current?.op ?? "=");
   const [value, setValue] = useState(current?.value ?? "");
   const popRef = useRef<HTMLDivElement>(null);
@@ -55,8 +61,7 @@ export function ColumnFilterPopover({ column, anchor, current, onApply, onClose 
   }, [onClose]);
 
   async function apply(): Promise<void> {
-    const willClear = !noVal && value.trim() === "";
-    const shouldClose = await onApply(willClear ? null : { op, value: noVal ? "" : value });
+    const shouldClose = await onApply({ op, value: noVal ? "" : value });
     if (shouldClose) onClose();
   }
 

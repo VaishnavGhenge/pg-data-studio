@@ -7,9 +7,10 @@ interface WhereBarProps {
   columns: Column[];
   tableName: string;
   onApply: (text: string) => void;
+  disabled?: boolean;
 }
 
-export function WhereBar({ appliedWhere, columns, tableName, onApply }: WhereBarProps) {
+export function WhereBar({ appliedWhere, columns, tableName, onApply, disabled }: WhereBarProps) {
   const [text, setText] = useState(appliedWhere);
 
   // Re-sync the displayed text only when the *applied* value actually
@@ -28,13 +29,25 @@ export function WhereBar({ appliedWhere, columns, tableName, onApply }: WhereBar
         className={"wherebar-input" + (appliedWhere !== "" ? " active" : "")}
         value={text}
         onChange={setText}
-        onEnter={() => onApply(text.trim())}
-        onEscape={() => onApply("")}
+        onEnter={() => {
+          if (!disabled) onApply(text.trim());
+        }}
+        onEscape={() => setText(appliedWhere)}
         placeholder="price > 100 AND code LIKE 'I%'"
         ariaLabel="WHERE clause"
         tableName={tableName}
         columnNames={columns.map((c) => c.name)}
       />
+      <span className="where-state">
+        {text.trim() !== appliedWhere ? "Not applied" : appliedWhere ? "Applied" : "WHERE"}
+      </span>
+      <button
+        className="btn ghost"
+        disabled={disabled || text.trim() === appliedWhere}
+        onClick={() => onApply(text.trim())}
+      >
+        Apply
+      </button>
       {text === "" && (
         <span className="wherebar-hint">
           <kbd className="wherebar-key">
@@ -49,6 +62,7 @@ export function WhereBar({ appliedWhere, columns, tableName, onApply }: WhereBar
           title="Clear filter"
           aria-label="Clear filter"
           onClick={() => onApply("")}
+          disabled={disabled}
         >
           ×
         </button>

@@ -17,7 +17,7 @@ export function buildUpdatePreview(
   dirty: Record<string, DirtyEntry>,
   pk: string[],
   schema: string,
-  table: string
+  table: string,
 ): string[] {
   const ref = `${quoteIdent(schema)}.${quoteIdent(table)}`;
   return groupDirtyByRow(dirty).map((change) => {

@@ -15,6 +15,7 @@ const api: Api = {
   tableColumns: (schema, table) =>
     invoke<{ columns: Column[]; pk: string[] }>("db:tableColumns", schema, table),
   query: (schema, table, opts) => invoke<QueryResult>("db:query", schema, table, opts),
+  countRows: (schema, table, opts) => invoke<string>("db:countRows", schema, table, opts),
   applyChanges: (schema, table, changes) =>
     invoke<ApplyResult>("db:applyChanges", schema, table, changes),
   listSources: () => invoke<Source[]>("store:list"),

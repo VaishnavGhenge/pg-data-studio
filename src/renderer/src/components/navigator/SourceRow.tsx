@@ -11,7 +11,14 @@ interface SourceRowProps {
   children?: ReactNode;
 }
 
-export function SourceRow({ source, status, open, onClick, onContextMenu, children }: SourceRowProps) {
+export function SourceRow({
+  source,
+  status,
+  open,
+  onClick,
+  onContextMenu,
+  children,
+}: SourceRowProps) {
   return (
     <>
       <NavRow

@@ -10,7 +10,7 @@ IPC bridge.
 
 ## Requirements
 
-- Node.js 18+
+- Node.js 20.19+ or 22.12+ (required by the installed Vite toolchain)
 - A reachable Postgres database
 
 ## Run it
@@ -20,8 +20,8 @@ npm install
 npm run dev      # electron-vite dev — HMR for the renderer, launches Electron
 ```
 
-`npm start` builds and runs a production build via `electron-vite preview`, for
-smoke-testing without packaging a distributable.
+Run `npm run build` first, then `npm start` to preview that production build
+without packaging a distributable.
 
 On first launch, click **+** in the sidebar to add a data source — a structured
 form (host/port/user/password/database/SSL) that stays in sync with a raw
@@ -32,8 +32,10 @@ trust model as a local `.env`).
 ## What it does
 
 - **Browse** — tables grouped by schema in the sidebar, with row estimates.
-- **View** — first 200 rows, server-side sort by clicking a column header.
-- **Filter** — quick client-side filter over the loaded rows.
+- **View** — 200 rows per page with Previous/Next controls; server-side sort by
+  clicking a column header, with primary-key ordering to break ties.
+- **Filter** — quick client-side filter over the loaded page, a server-side SQL
+  WHERE expression, and parameterized per-column filters.
 - **Edit** — click a non-key cell to select it, double-click (or Enter) to
   edit. Empty a cell to set `NULL`.
 - **Review** — dirty cells/rows are highlighted; Save/Revert live in the
@@ -42,6 +44,10 @@ trust model as a local `.env`).
 
 Editing needs a primary key: it's what maps an edited cell back to the right row.
 Tables without one are read-only (by design — safer than guessing).
+Values retain PostgreSQL's text representation, including JSON numbers,
+timestamp microseconds, and native array syntax such as `{1,2,3}`. A failed
+connection switch keeps the previous connection available. Saving connections
+uses atomic file replacement and reports persistence errors.
 
 ## Architecture
 
@@ -82,10 +88,24 @@ npm run dist:mac    # .dmg
 
 Output lands in `release/`.
 
+## Verification
+
+```bash
+npm test
+npm run typecheck
+npm run build
+```
+
+Regression tests exercise row identity, asynchronous action ordering, PostgreSQL
+driver parsing, connection replacement, and filesystem failures. They use mocked
+database transport and IPC, and do not require a running database or Electron GUI.
+
 ## Known limitations (v0.1)
 
-- SELECT is capped at 200 rows; no paging UI yet.
-- Editing complex types (jsonb, arrays) round-trips as text — fine for scalars,
-  rough for nested values.
+- Pages contain 200 rows; there is no total count or jump-to-page control.
+- Offset pagination can shift when other clients insert, delete, or reorder rows.
+  Tables without primary keys have no guaranteed ordering.
+- Complex types use text editing; there is no structured JSON/array editor.
 - No row insert/delete yet, and no free-form SQL editor.
-- Filter is client-side over loaded rows, not a server-side `WHERE`.
+- The quick filter searches only the loaded page; use WHERE or column filters
+  to search the table on the server.

@@ -46,9 +46,7 @@ interface Source extends ConnectConfig {
 
 /** Operators available for a structured per-column filter. */
 type FilterOp =
-  | "=" | "!=" | ">" | ">=" | "<" | "<="
-  | "contains" | "starts" | "ends"
-  | "isnull" | "notnull";
+  "=" | "!=" | ">" | ">=" | "<" | "<=" | "contains" | "starts" | "ends" | "isnull" | "notnull";
 
 /** One structured column filter: `<column> <op> <value>`, parameterized. */
 interface ColumnFilter {
@@ -109,12 +107,16 @@ interface Api {
   disconnect(): Promise<IpcResult<boolean>>;
   status(): Promise<IpcResult<DbStatus>>;
   listTables(): Promise<IpcResult<TableInfo[]>>;
-  tableColumns(schema: string, table: string): Promise<IpcResult<{ columns: Column[]; pk: string[] }>>;
+  tableColumns(
+    schema: string,
+    table: string,
+  ): Promise<IpcResult<{ columns: Column[]; pk: string[] }>>;
   query(schema: string, table: string, opts: QueryOpts): Promise<IpcResult<QueryResult>>;
+  countRows(schema: string, table: string, opts: QueryOpts): Promise<IpcResult<string>>;
   applyChanges(
     schema: string,
     table: string,
-    changes: RowChange[]
+    changes: RowChange[],
   ): Promise<IpcResult<ApplyResult>>;
   listSources(): Promise<IpcResult<Source[]>>;
   saveSource(source: Source): Promise<IpcResult<Source>>;

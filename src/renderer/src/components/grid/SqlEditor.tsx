@@ -34,19 +34,39 @@ const highlightStyle = HighlightStyle.define([
 ]);
 
 const editorTheme = EditorView.theme({
-  "&": { fontSize: "12px", fontFamily: "var(--mono)", backgroundColor: "transparent", color: "var(--text)" },
+  "&": {
+    fontSize: "12px",
+    fontFamily: "var(--mono)",
+    backgroundColor: "transparent",
+    color: "var(--text)",
+  },
   ".cm-content": { padding: "0", caretColor: "var(--text)" },
   ".cm-line": { padding: "0" },
   "&.cm-focused": { outline: "none" },
   ".cm-scroller": { fontFamily: "inherit", overflow: "hidden" },
   ".cm-placeholder": { color: "var(--text-faint)" },
   ".cm-tooltip.cm-tooltip-autocomplete": {
-    background: "var(--panel)", border: "1px solid var(--border-strong)", borderRadius: "8px",
-    boxShadow: "var(--shadow)", overflow: "hidden",
+    background: "var(--panel)",
+    border: "1px solid var(--border-strong)",
+    borderRadius: "8px",
+    boxShadow: "var(--shadow)",
+    overflow: "hidden",
   },
-  ".cm-tooltip-autocomplete ul": { fontFamily: "var(--mono)", fontSize: "12px", padding: "4px", maxHeight: "220px" },
-  ".cm-tooltip-autocomplete ul li": { padding: "5px 9px", borderRadius: "5px", color: "var(--text-dim)" },
-  ".cm-tooltip-autocomplete ul li[aria-selected]": { background: "var(--sel)", color: "var(--text)" },
+  ".cm-tooltip-autocomplete ul": {
+    fontFamily: "var(--mono)",
+    fontSize: "12px",
+    padding: "4px",
+    maxHeight: "220px",
+  },
+  ".cm-tooltip-autocomplete ul li": {
+    padding: "5px 9px",
+    borderRadius: "5px",
+    color: "var(--text-dim)",
+  },
+  ".cm-tooltip-autocomplete ul li[aria-selected]": {
+    background: "var(--sel)",
+    color: "var(--text)",
+  },
   ".cm-completionIcon": { display: "none" },
 });
 
@@ -106,7 +126,9 @@ export function SqlEditor({
         doc: value,
         extensions: [
           history(),
-          sqlCompartmentRef.current.of(sql({ dialect: PostgreSQL, schema, defaultTable: tableName })),
+          sqlCompartmentRef.current.of(
+            sql({ dialect: PostgreSQL, schema, defaultTable: tableName }),
+          ),
           syntaxHighlighting(highlightStyle),
           autocompletion(),
           closeBrackets(),
@@ -148,7 +170,10 @@ export function SqlEditor({
           EditorState.transactionFilter.of((tr) => {
             if (!tr.docChanged || !/\n/.test(tr.newDoc.toString())) return tr;
             const flattened = tr.newDoc.toString().replace(/\n+/g, " ");
-            return [tr, { changes: { from: 0, to: tr.newDoc.length, insert: flattened }, sequential: true }];
+            return [
+              tr,
+              { changes: { from: 0, to: tr.newDoc.length, insert: flattened }, sequential: true },
+            ];
           }),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) onChangeRef.current(update.state.doc.toString());
@@ -191,7 +216,7 @@ export function SqlEditor({
     const schema: SQLNamespace = { [tableName]: columnNames };
     view.dispatch({
       effects: sqlCompartmentRef.current.reconfigure(
-        sql({ dialect: PostgreSQL, schema, defaultTable: tableName })
+        sql({ dialect: PostgreSQL, schema, defaultTable: tableName }),
       ),
     });
   }, [tableName, columnNames]);
