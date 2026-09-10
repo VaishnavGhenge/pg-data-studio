@@ -8,6 +8,30 @@ Built with Electron and TypeScript. All database access happens in the main
 process; the renderer is sandboxed and talks to it over a minimal, fully typed
 IPC bridge.
 
+## Install (beta)
+
+Grab the latest `.dmg` from
+[Releases](https://github.com/VaishnavGhenge/pg-data-studio/releases). Apple
+Silicon only, macOS 11 or later.
+
+The build is not signed with an Apple Developer ID, so macOS quarantines it.
+After dragging the app into Applications:
+
+1. Open it. macOS refuses, saying it cannot verify the developer.
+2. Go to System Settings > Privacy & Security, scroll down to Security, and
+   click **Open Anyway**. You have about an hour from the failed launch before
+   that button disappears; if it does, open the app again to bring it back.
+3. Confirm. Every launch after that is normal.
+
+Check what you downloaded against the release's `SHA256SUMS.txt`:
+
+```bash
+shasum -a 256 -c SHA256SUMS.txt
+```
+
+Building from source skips all of this. Locally built apps never carry the
+quarantine flag.
+
 ## Requirements
 
 - Node.js 20.19+ or 22.12+ (required by the installed Vite toolchain)
@@ -79,14 +103,42 @@ layer without an explicit import.
 Security posture: `contextIsolation: true`, `nodeIntegration: false`,
 `sandbox: true`, strict CSP, external links open in the OS browser.
 
-## Package a distributable
+## Cut a release
+
+1. Bump `version` in `package.json` and commit it.
+2. `git tag v0.1.0-beta.2 && git push origin main --tags`
+
+`.github/workflows/release.yml` picks the tag up on a GitHub-hosted Apple
+Silicon runner: typecheck, tests, then an arm64 `.dmg` attached to a GitHub
+Release alongside `SHA256SUMS.txt`. A tag with a `-` suffix publishes as a
+prerelease, so `v0.1.0-beta.2` lands as one and `v0.1.0` does not. The tag has
+to match `package.json`, or the job fails before it builds anything.
+
+To build locally instead:
 
 ```bash
 npm run dist        # current platform
-npm run dist:mac    # .dmg
+npm run dist:mac    # arm64 .dmg
 ```
 
 Output lands in `release/`.
+
+### Signing, when there's a budget for it
+
+Everything above is unsigned. Dropping the Open Anyway step needs an Apple
+Developer Program membership at $99/year, a Developer ID Application
+certificate, and notarization. There is no free path: Apple does not notarize
+for non-members.
+
+Once you have a membership, remove `"identity": null` from `build.mac`, add
+`"notarize": true`, and set `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`,
+`APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` as repository secrets. The
+workflow needs no other change.
+
+That is also the price of entry for Homebrew. Since 1 September 2026
+`homebrew-cask` rejects casks that fail Gatekeeper, and `--no-quarantine` is
+gone from Homebrew entirely, so an unsigned app cannot be installed cleanly
+through `brew` by any route.
 
 ## Verification
 
