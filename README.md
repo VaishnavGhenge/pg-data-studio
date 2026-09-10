@@ -55,16 +55,38 @@ trust model as a local `.env`).
 
 ## What it does
 
-- **Browse** — tables grouped by schema in the sidebar, with row estimates.
-- **View** — 200 rows per page with Previous/Next controls; server-side sort by
-  clicking a column header, with primary-key ordering to break ties.
-- **Filter** — quick client-side filter over the loaded page, a server-side SQL
-  WHERE expression, and parameterized per-column filters.
-- **Edit** — click a non-key cell to select it, double-click (or Enter) to
-  edit. Empty a cell to set `NULL`.
-- **Review** — dirty cells/rows are highlighted; Save/Revert live in the
+- **Browse**: tables grouped by schema in the sidebar, with row counts read
+  from `pg_class.reltuples`, so they are planner estimates rather than exact.
+  Right-click a source to edit, duplicate, refresh, disconnect or delete it.
+- **Tabs**: every table you open gets a tab. Switching tabs preserves that
+  tab's unsaved edits, sort, filters and page position. Switching connections
+  closes all of them.
+- **View**: 200, 500 or 1000 rows per page with Previous/Next controls;
+  server-side sort by clicking a column header, with primary-key ordering to
+  break ties. There is no running total: **Count matching rows** in the toolbar
+  runs an exact `count(*)` with the current filters applied, on demand, because
+  it is slow on large tables.
+- **Filter**: a quick client-side search over the loaded page, a server-side
+  SQL WHERE expression with syntax highlighting and column-aware completion,
+  and parameterized per-column filters.
+- **Edit**: click a non-key cell to select it, double-click (or Enter) to
+  edit. Empty a cell to set `NULL`. Undo and redo pending edits with
+  Cmd/Ctrl Z and Cmd/Ctrl Shift Z, up to 100 steps deep.
+- **Select**: drag a rectangular block of cells and copy it as TSV, ready to
+  paste into a spreadsheet.
+- **Inspect**: open a cell in a side panel to read long values with wrapping,
+  pretty-print and validate `json`/`jsonb` before applying, copy the raw text,
+  or toggle NULL.
+- **Arrange**: resize, hide and pin columns; pinned ones move to the front and
+  stay put while you scroll sideways. The layout is remembered per table.
+- **Review**: dirty cells/rows are highlighted; Save/Revert live in the
   toolbar with a live pending-change count.
-- **Save** — all edits apply in one transaction; on failure, nothing is written.
+- **Save**: all edits apply in one transaction; on failure, nothing is written.
+
+Appearance is configurable per install (theme, density, font size) and per
+source (a colour and an environment label, so production looks different from
+staging). Preferences, column layouts and the sidebar width persist in
+`localStorage` under the `pgstudio:` prefix.
 
 Editing needs a primary key: it's what maps an edited cell back to the right row.
 Tables without one are read-only (by design — safer than guessing).
@@ -90,10 +112,23 @@ src/
     src/
       main.tsx, App.tsx     React entry + top-level composition
       state/                Context + useReducer stores (sources/table/toast/confirm)
-      hooks/                IPC + action orchestration (useSourceActions, useTableActions, …)
-      lib/                  Pure helpers (dirty-tracking math, row identity, filter ops)
-      components/           layout/, navigator/, grid/, common/
+      hooks/                IPC + action orchestration (useSourceActions, useTableActions),
+                            plus UI state that outlives a render (useColumnLayout,
+                            useSplitterWidth, useConfirmedAction)
+      lib/                  Pure helpers: dirty-tracking math, row identity, filter ops,
+                            SQL preview, grid selection + TSV, JSON formatting,
+                            localStorage preferences, title truncation
+      components/           layout/ (shell, titlebar, splitter, display settings)
+                            navigator/ (sidebar tree, source modal, context menus)
+                            grid/ (interactive grid, inline editor, WHERE bar,
+                            SQL editor, column chooser, value inspector, pager)
+                            common/ (modal, toast, confirm dialog, context menu, icons)
 ```
+
+Table state lives in one reducer (`state/tableStore.tsx`). It holds the active
+tab plus a snapshot per open tab, so switching tabs is a swap rather than a
+reload and unsaved edits survive it. Pending edits are a `dirty` map with
+`past`/`future` stacks behind undo and redo.
 
 Built with **electron-vite**: main/preload compile as plain TypeScript, the
 renderer is React + TypeScript via Vite (with HMR in `npm run dev`). The shared
@@ -146,18 +181,34 @@ through `brew` by any route.
 npm test
 npm run typecheck
 npm run build
+node tests/ui-smoke.cjs   # after npm run build
 ```
 
-Regression tests exercise row identity, asynchronous action ordering, PostgreSQL
-driver parsing, connection replacement, and filesystem failures. They use mocked
-database transport and IPC, and do not require a running database or Electron GUI.
+`npm test` runs `tests/*.test.cjs`, currently 27 regression tests covering row
+identity, asynchronous action ordering, tab snapshots and edit preservation,
+page-size changes, PostgreSQL driver parsing, connection replacement, and
+filesystem failures. `tests/load.cjs` compiles the real TypeScript modules with
+replaceable I/O boundaries, so none of it needs a running database or Electron.
 
-## Known limitations (v0.1)
+`tests/ui-smoke.cjs` is separate and not part of `npm test`. It drives the
+built renderer in headless Chrome against mock IPC, using an isolated profile,
+so it never touches a real database or your Electron profile. Run it after
+`npm run build`.
 
-- Pages contain 200 rows; there is no total count or jump-to-page control.
+## Known limitations (beta)
+
+- Paging is Previous/Next only: no jump-to-page, and no running total unless
+  you ask for one with **Count matching rows**.
 - Offset pagination can shift when other clients insert, delete, or reorder rows.
   Tables without primary keys have no guaranteed ordering.
-- Complex types use text editing; there is no structured JSON/array editor.
-- No row insert/delete yet, and no free-form SQL editor.
+- No row insert or delete. `applyChanges` matches rows by primary key and only
+  ever issues UPDATEs.
+- No free-form SQL. The WHERE bar takes a boolean expression against the
+  current table, not arbitrary statements; there is no IPC channel that would
+  run one.
+- The value inspector pretty-prints and validates JSON, but arrays and
+  composite types are still edited as text.
 - The quick filter searches only the loaded page; use WHERE or column filters
   to search the table on the server.
+- Saved connection passwords are stored in plaintext in the app's user-data
+  dir, not the macOS Keychain.
