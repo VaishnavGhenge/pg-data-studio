@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTableState, useWorkspaceRequests } from "../../state/tableStore";
 import { useSourcesState } from "../../state/sourcesStore";
 import { useTableActions } from "../../hooks/useTableActions";
@@ -31,15 +31,20 @@ export function TableView() {
   const changedRows = groupDirtyByRow(state.dirty).length;
   const blocked = state.loading || saving || !!sources.connectingId;
   const hasFilters = !!state.where || Object.keys(state.colFilters).length > 0;
-  const visibleRows = state.rows.filter((row, index) =>
-    state.columns.some((col) => {
-      const edit = state.dirty[dirtyKey(displayRowKey(state.pk, row, index), col.name)];
-      const value = edit ? edit.val : row[col.name];
-      return String(value === null ? "null" : value)
-        .toLowerCase()
-        .includes(quickFilter.trim().toLowerCase());
-    }),
-  );
+  const visibleRows = useMemo(() => {
+    const search = quickFilter.trim().toLowerCase();
+    if (!search) return state.rows;
+    return state.rows.filter((row, index) => {
+      const key = displayRowKey(state.pk, row, index);
+      return state.columns.some((col) => {
+        const edit = state.dirty[dirtyKey(key, col.name)];
+        const value = edit ? edit.val : row[col.name];
+        return String(value === null ? "null" : value)
+          .toLowerCase()
+          .includes(search);
+      });
+    });
+  }, [state.rows, state.columns, state.pk, state.dirty, quickFilter]);
   const resultKey = JSON.stringify([
     state.current,
     state.offset,

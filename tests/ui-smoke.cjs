@@ -86,6 +86,13 @@ async function main() {
         throw Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text);
       return result.result.value;
     }
+    async function waitFor(expression) {
+      for (let i = 0; i < 150; i++) {
+        if (await evaluate(expression)) return;
+        await delay(40);
+      }
+      throw Error("Timed out: " + expression);
+    }
     await send("Runtime.enable");
     await send("Page.enable");
     await send("Page.addScriptToEvaluateOnNewDocument", {
@@ -93,17 +100,20 @@ async function main() {
       const ok = data => Promise.resolve({ok:true,data});
       const columns = ['id','name','notes','json'].map((name,i)=>({name,dataType:i===3?'jsonb':'text',ordinal:i+1,isPk:i===0,notNull:i===0}));
       const records = Array.from({length:230},(_,i)=>({id:String(i+1),name:'Person '+(i+1),notes:i===0?null:'Note '+i,json:'{"id":9007199254740993,"active":true}'}));
+      const wideColumns=Array.from({length:64},(_,i)=>({name:i===0?'id':'field_'+i,dataType:'text',ordinal:i+1,isPk:i===0,notNull:i===0}));
+      const wideRecords=Array.from({length:1000},(_,r)=>Object.fromEntries(wideColumns.map((c,i)=>[c.name,i===0?String(r+1):'R'+(r+1)+' C'+i])));
       window.testCalls=[];
       window.api={
         listSources:()=>ok([{id:'local',name:'Local demo',host:'localhost',port:5432,database:'demo',user:'demo'}]),
         connect:()=>ok({database:'demo',host:'localhost',serverVersion:'PostgreSQL 17'}),
         disconnect:()=>ok(true),
-        listTables:()=>ok([{schema:'public',name:'people',estRows:230},{schema:'public',name:'books',estRows:230}]),
-        tableColumns:()=>ok({columns,pk:['id']}),
+        listTables:()=>ok([{schema:'public',name:'people',estRows:230},{schema:'public',name:'books',estRows:230},{schema:'public',name:'wide_grid',estRows:1000}]),
+        tableColumns:(_s,t)=>ok({columns:t==='wide_grid'?wideColumns:columns,pk:['id']}),
         query:async(schema,table,opts)=>{
           window.testCalls.push({table,opts}); await new Promise(r=>setTimeout(r,30));
           if(opts.where==='bad') return {ok:false,error:'Invalid WHERE expression'};
-          return {ok:true,data:{columns,pk:['id'],rows:records.slice(opts.offset,opts.offset+opts.limit),offset:opts.offset,hasMore:opts.offset+opts.limit<records.length,ms:12,previewSql:'SELECT * FROM public.'+table}};
+          const data=table==='wide_grid'?wideRecords:records;
+          return {ok:true,data:{columns:table==='wide_grid'?wideColumns:columns,pk:['id'],rows:data.slice(opts.offset,opts.offset+opts.limit),offset:opts.offset,hasMore:opts.offset+opts.limit<data.length,ms:12,previewSql:'SELECT * FROM public.'+table}};
         },
         applyChanges:async(schema,table,changes)=>{changes.forEach(c=>Object.assign(records.find(r=>r.id===c.pk.id),c.set));return {ok:true,data:{updated:changes.length,statements:[]}}},
         countRows:()=>ok('230'),beep:()=>ok(true),
@@ -122,9 +132,10 @@ async function main() {
     await evaluate(`document.querySelector('.nrow.table').click()`);
     await delay(150);
     assert.equal(
-      await evaluate(`document.querySelectorAll('.interactive-grid tbody tr').length`),
-      200,
+      await evaluate(`document.querySelector('.interactive-grid').getAttribute('aria-rowcount')`),
+      "201",
     );
+    assert.ok(await evaluate(`document.querySelectorAll('.grid-data-row').length < 60`));
     await evaluate(
       `const table=document.querySelector('.interactive-grid');table.focus();key(table,'ArrowRight');`,
     );
@@ -207,12 +218,117 @@ async function main() {
       await evaluate(`document.querySelector('.table-status').textContent`),
       /230 matching rows/,
     );
+
+    // Virtualization must preserve logical coordinates, including navigation,
+    // editing and copying cells that are outside the mounted window.
+    await evaluate(
+      `[...document.querySelectorAll('.nrow.table')].find(e=>e.querySelector('.nlabel')?.textContent==='wide_grid').click()`,
+    );
+    await waitFor(
+      `document.querySelector('.table-heading').textContent.includes('wide_grid') && !document.querySelector('.query-feedback')`,
+    );
+    await evaluate(
+      `const page=document.querySelector('select[aria-label="Page size"]');page.value='1000';page.dispatchEvent(new Event('change',{bubbles:true}))`,
+    );
+    await waitFor(
+      `document.querySelector('.interactive-grid')?.getAttribute('aria-rowcount')==='1001' && !document.querySelector('.query-feedback')`,
+    );
+    assert.ok(await evaluate(`document.querySelectorAll('[role="gridcell"]').length < 2000`));
+    await evaluate(
+      `(()=>{const sc=document.querySelector('.grid-scroll');sc.scrollTop=sc.scrollHeight;sc.scrollLeft=sc.scrollWidth})()`,
+    );
+    await waitFor(`!!document.querySelector('[data-row="999"][data-col="63"]')`);
+    assert.equal(
+      await evaluate(`document.querySelector('[data-row="999"][data-col="63"]').textContent`),
+      "R1000 C63",
+    );
+    await evaluate(
+      `document.querySelector('[data-row="999"][data-col="63"]').dispatchEvent(new MouseEvent('mousedown',{bubbles:true,button:0}))`,
+    );
+    await evaluate(
+      `(async()=>{for(let i=0;i<45;i++){key(document.querySelector('.interactive-grid'),'ArrowUp');await new Promise(requestAnimationFrame)}for(let i=0;i<30;i++){key(document.querySelector('.interactive-grid'),'ArrowLeft');await new Promise(requestAnimationFrame)}})()`,
+    );
+    await waitFor(
+      `document.querySelector('.interactive-grid').getAttribute('aria-activedescendant')==='cell-954-33' && !!document.querySelector('#cell-954-33')`,
+    );
+    await evaluate(`key(document.querySelector('.interactive-grid'),'Enter')`);
+    await waitFor(`!!document.querySelector('.cell-input')`);
+    await evaluate(`setInput(document.querySelector('.cell-input'),'Offscreen edit')`);
+    await evaluate(
+      `const scroll=document.querySelector('.grid-scroll');scroll.scrollTop=0;scroll.scrollLeft=0`,
+    );
+    await waitFor(`!!document.querySelector('#cell-0-0')`);
+    assert.equal(await evaluate(`document.querySelector('.cell-input').value`), "Offscreen edit");
+    await evaluate(`key(document.querySelector('.cell-input'),'Enter')`);
+    await waitFor(`!!document.querySelector('.pending-count')`);
+    assert.match(
+      await evaluate(`document.querySelector('.pending-count').textContent`),
+      /1 cell in 1 row/,
+    );
+    await evaluate(`document.querySelector('[aria-label="Undo"]').click()`);
+    await waitFor(`!document.querySelector('.pending-count')`);
+    await evaluate(`document.querySelector('[aria-label="Redo"]').click()`);
+    await waitFor(`!!document.querySelector('.pending-count')`);
+    await evaluate(`clickText('Revert all')`);
+    await waitFor(`!document.querySelector('.pending-count')`);
+    await evaluate(`key(document.querySelector('.interactive-grid'),'a',{ctrlKey:true})`);
+    await delay(30);
+    await evaluate(`key(document.querySelector('.interactive-grid'),'c',{ctrlKey:true})`);
+    await delay(30);
+    const copied = await evaluate(`window.clipboardText`);
+    assert.equal(copied.split("\n").length, 1000);
+    assert.equal(copied.split("\n")[999].split("\t").length, 64);
+    assert.ok(copied.endsWith("R1000 C63"));
+
+    await evaluate(`clickText('Columns')`);
+    await delay(30);
+    await evaluate(
+      `document.querySelectorAll('.column-chooser > div')[63].querySelector('button').click()`,
+    );
+    await delay(50);
+    await evaluate(`document.querySelector('.grid-scroll').scrollLeft=9000`);
+    await waitFor(`!!document.querySelector('.interactive-grid td.pinned')`);
+    const pinned = await evaluate(
+      `(()=>{const cell=document.querySelector('.interactive-grid td.pinned'),sc=document.querySelector('.grid-scroll');return {name:document.querySelector('.interactive-grid th[aria-colindex="2"]').textContent,x:cell.getBoundingClientRect().left-sc.getBoundingClientRect().left}})()`,
+    );
+    assert.match(pinned.name, /field_63/);
+    assert.ok(Math.abs(pinned.x - 40) < 2, "Pinned cell remains next to the gutter");
+    await evaluate(`clickText('Reset columns')`);
+    await delay(50);
+    await evaluate(
+      `document.querySelector('.grid-scroll').scrollLeft=0;document.querySelector('.grid-scroll').scrollTop=0`,
+    );
+    await waitFor(`!!document.querySelector('#cell-0-0')`);
+    await evaluate(`clickText('Display settings')`);
+    await delay(30);
+    await evaluate(
+      `const opts=document.querySelectorAll('.settings-form select');opts[1].value='comfortable';opts[1].dispatchEvent(new Event('change',{bubbles:true}))`,
+    );
+    await delay(40);
+    await evaluate(
+      `const size=document.querySelectorAll('.settings-form select')[2];size.value='18';size.dispatchEvent(new Event('change',{bubbles:true}))`,
+    );
+    await delay(50);
+    await evaluate(`clickText('Done')`);
+    await delay(50);
+    await evaluate(
+      `(()=>{const sc=document.querySelector('.grid-scroll');sc.scrollTop=sc.scrollHeight})()`,
+    );
+    await waitFor(`!!document.querySelector('#cell-999-0')`);
+    const last = await evaluate(
+      `(()=>{const sc=document.querySelector('.grid-scroll'),last=document.querySelector('#cell-999-0');return {bottom:last.getBoundingClientRect().bottom,viewport:sc.getBoundingClientRect().bottom,rows:document.querySelectorAll('.grid-data-row').length}})()`,
+    );
+    assert.ok(
+      last.bottom <= last.viewport && last.bottom > last.viewport - 60,
+      "Last row stays aligned after density and font changes",
+    );
+    assert.ok(last.rows < 60);
     const screenshot = await send("Page.captureScreenshot", { format: "png" });
     const screenshotPath = path.join(os.tmpdir(), "pgstudio-ui-smoke.png");
     fs.writeFileSync(screenshotPath, Buffer.from(screenshot.data, "base64"));
     assert.deepEqual(errors, []);
     console.log(
-      "UI smoke passed: editing, history, tabs, review, TSV, columns, inspector, theme, pagination, count.",
+      "UI smoke passed: editing, history, tabs, review, TSV, columns, inspector, theme, pagination, count; virtualized offscreen navigation/editing, full-page copy, pinned columns, density and font changes.",
     );
     console.log("Screenshot: " + screenshotPath);
   } finally {

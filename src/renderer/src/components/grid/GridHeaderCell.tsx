@@ -63,6 +63,7 @@ export function GridHeaderCell({
 
   return (
     <th
+      aria-colindex={index + 2}
       className={(sorted ? "sorted " : "") + (filtered ? "filtered" : "")}
       style={{ ...style, ...stickyStyle, zIndex: stickyStyle?.position ? 5 : undefined }}
       aria-sort={sorted ? (sortDir === "asc" ? "ascending" : "descending") : "none"}

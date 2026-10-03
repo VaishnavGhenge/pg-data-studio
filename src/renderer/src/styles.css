@@ -1746,6 +1746,7 @@ kbd {
   min-width: 0;
 }
 .interactive-grid {
+  --grid-row-height: max(28px, calc(var(--grid-font-size) * 1.5 + 10px));
   table-layout: fixed;
   width: max-content;
   font-size: var(--grid-font-size);
@@ -1758,11 +1759,37 @@ kbd {
 }
 .interactive-grid .cell {
   padding: 4px 10px;
-  min-height: 27px;
+  min-height: 0;
+  height: calc(var(--grid-row-height) - 1px);
+}
+[data-density="comfortable"] .interactive-grid {
+  --grid-row-height: max(39px, calc(var(--grid-font-size) * 1.5 + 20px));
 }
 [data-density="comfortable"] .interactive-grid .cell {
   padding: 9px 12px;
-  min-height: 38px;
+}
+.interactive-grid .grid-data-row {
+  height: var(--grid-row-height);
+}
+.interactive-grid .grid-data-row td {
+  background: var(--editor);
+}
+.interactive-grid .grid-data-row.even-row td {
+  background: var(--row-alt);
+}
+.interactive-grid .grid-data-row:hover td {
+  background: var(--sel);
+}
+.interactive-grid .grid-row-space td,
+.interactive-grid .grid-column-space {
+  padding: 0;
+  border: 0;
+  pointer-events: none;
+  background: var(--editor);
+}
+.interactive-grid thead .grid-column-space {
+  background: var(--panel);
+  border-bottom: 1px solid var(--border-strong);
 }
 .interactive-grid .special-value {
   color: var(--text-dim);
@@ -1783,7 +1810,7 @@ kbd {
   background: var(--editor);
   box-shadow: 1px 0 0 var(--border-strong);
 }
-.interactive-grid tr:nth-child(even) td.pinned {
+.interactive-grid .grid-data-row.even-row td.pinned {
   background: var(--row-alt);
 }
 .interactive-grid .header-sort {
