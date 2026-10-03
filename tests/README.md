@@ -13,6 +13,15 @@ theme, pagination and row counts. Its wide-grid scenario also checks offscreen
 navigation/editing, copying all 1,000 rows and 64 columns, pinned columns, and
 row measurements after density/font changes.
 
+Workspace checks cover the welcome screen, quick open with keyboard navigation
+and focus restoration, the collapsible filter panel, connection menus, failed
+connection retries without losing form values or duplicating saved connections,
+light/dark themes, reduced motion, and the minimum window size.
+They also verify favorite synchronization, stable ordering and collapse
+preferences, edit preservation when reopening a favorite, tab keyboard
+navigation, and focus after closing a tab or removing a favorite. Saved legacy
+recent-table history does not create a Recent tables section.
+
 ## Performance comparison
 
 Preserve a production renderer before changing it, then test both builds on the

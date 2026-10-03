@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CloseIcon } from "../common/icons";
 import { useToast } from "../../state/toastStore";
 
 import { formatJson } from "../../lib/jsonFormat";
@@ -36,8 +37,13 @@ export function ValueInspector({
     <aside className="value-inspector" aria-label="Value inspector">
       <div className="inspector-head">
         <strong>{column.name}</strong>
-        <button className="btn ghost" onClick={onClose} aria-label="Close inspector">
-          ×
+        <button
+          className="icon-btn"
+          onClick={onClose}
+          aria-label="Close inspector"
+          title="Close inspector"
+        >
+          <CloseIcon size={15} />
         </button>
       </div>
       <small>

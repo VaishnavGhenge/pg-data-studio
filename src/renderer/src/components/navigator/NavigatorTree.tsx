@@ -19,6 +19,7 @@ import { SchemaRow } from "./SchemaRow";
 import { TableRow } from "./TableRow";
 import { NavRow } from "./NavRow";
 import { ColumnIcon } from "../common/icons";
+import { tableId } from "../../lib/preferences";
 
 const kSrc = (id: string) => "src:" + id;
 const kSch = (s: string) => "sch:" + s;
@@ -112,6 +113,8 @@ interface NavigatorTreeProps {
   refreshSignal: number;
   onOpenTable: (schema: string, table: string) => void;
   onSourceContextMenu: (id: string, x: number, y: number) => void;
+  favorites: { schema: string; name: string }[];
+  onToggleFavorite: (schema: string, name: string) => void;
 }
 
 export function NavigatorTree({
@@ -119,6 +122,8 @@ export function NavigatorTree({
   refreshSignal,
   onOpenTable,
   onSourceContextMenu,
+  favorites,
+  onToggleFavorite,
 }: NavigatorTreeProps) {
   const { sources, connectedId, connectingId, errorId } = useSourcesState();
   const { connect } = useSourceActions();
@@ -237,6 +242,10 @@ export function NavigatorTree({
           matchQuery={q}
           onOpenTable={() => onOpenTable(schema, t.name)}
           onToggleColumns={() => toggleTable(schema, t.name)}
+          favorite={favorites.some(
+            (item) => tableId(item.schema, item.name) === tableId(schema, t.name),
+          )}
+          onToggleFavorite={() => onToggleFavorite(schema, t.name)}
         >
           {open && renderColumns(schema, t.name)}
         </TableRow>
@@ -250,7 +259,7 @@ export function NavigatorTree({
     if (!schemas.length) {
       return (
         <div className="nempty" style={{ paddingLeft: 36 }}>
-          {q ? "no matches" : "no tables"}
+          {q ? `No tables match “${filter}”.` : "No tables in this database."}
         </div>
       );
     }
@@ -272,7 +281,11 @@ export function NavigatorTree({
   return (
     <div className="tree" role="tree" aria-label="Database objects">
       {!sources.length ? (
-        <div className="tree-empty">No data sources yet. Click + to add one.</div>
+        <div className="tree-empty">
+          Your connections live here.
+          <br />
+          Use + to add your first database.
+        </div>
       ) : (
         sources.map((src) => {
           const connected = connectedId === src.id;
@@ -280,10 +293,10 @@ export function NavigatorTree({
           const status: "off" | "connecting" | "error" | "connected" =
             connectingId === src.id
               ? "connecting"
-              : errorId === src.id
-                ? "error"
-                : connected
-                  ? "connected"
+              : connected
+                ? "connected"
+                : errorId === src.id
+                  ? "error"
                   : "off";
           return (
             <SourceRow

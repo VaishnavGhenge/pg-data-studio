@@ -33,19 +33,23 @@ export function useSourceActions() {
   }, [sourcesDispatch]);
 
   const connect = useCallback(
-    async (src: Source): Promise<void> => {
-      if (requests.busy) return;
+    async (src: Source, onFailure?: (message: string) => void): Promise<boolean> => {
+      if (requests.busy) return false;
       const version = requests.version;
-      if (hasEdits && !(await confirmDiscard())) return;
-      if (!requests.isCurrent(version) || !requests.lock()) return;
+      if (hasEdits && !(await confirmDiscard())) return false;
+      if (!requests.isCurrent(version) || !requests.lock()) return false;
       sourcesDispatch({ type: "CONNECT_START", id: src.id });
       try {
         const meta = await unwrap(window.api.connect(src));
         sourcesDispatch({ type: "CONNECT_SUCCESS", id: src.id, meta });
         tableDispatch({ type: "CLEAR_WORKSPACE" });
+        return true;
       } catch (e) {
         sourcesDispatch({ type: "CONNECT_ERROR", id: src.id });
-        toast(e instanceof Error ? e.message : String(e), true);
+        const message = e instanceof Error ? e.message : String(e);
+        onFailure?.(message);
+        toast(message, true);
+        return false;
       } finally {
         tableDispatch({ type: "QUERY_CANCEL" });
         requests.busy = false;

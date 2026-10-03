@@ -2,36 +2,63 @@ import { useSourcesState } from "../../state/sourcesStore";
 import { useEffect, useState } from "react";
 import { DisplaySettings, type SourceAppearance } from "./DisplaySettings";
 import { readPreference } from "../../lib/preferences";
+import { DatabaseIcon, SearchIcon } from "../common/icons";
 
-export function Titlebar() {
+export function Titlebar({ onQuickOpen }: { onQuickOpen: () => void }) {
   const { dbMeta, connectedId, connectingId } = useSourcesState();
   const [appearance, setAppearance] = useState<SourceAppearance>({
-    color: "#4c8dff",
+    color: "#708d75",
     environment: "",
   });
   useEffect(() => {
     const update = () =>
       setAppearance(
-        readPreference("source-appearance:" + connectedId, { color: "#4c8dff", environment: "" }),
+        readPreference("source-appearance:" + connectedId, { color: "#708d75", environment: "" }),
       );
     update();
     window.addEventListener("source-appearance-change", update);
     return () => window.removeEventListener("source-appearance-change", update);
   }, [connectedId]);
   return (
-    <div className="titlebar">
-      <span className="titlebar-name">PG Data Studio</span>
-      <span className="titlebar-conn">{dbMeta ? `${dbMeta.database} · ${dbMeta.host}` : ""}</span>
-      {connectedId && (
-        <span
-          className="environment-badge"
-          style={{ borderColor: appearance.color, color: appearance.color }}
-        >
-          {appearance.environment || "Connected"}
+    <header className="titlebar" style={{ paddingLeft: /Mac/.test(navigator.platform) ? 78 : 20 }}>
+      <div className="workspace-brand">
+        <span className="brand-symbol">
+          <DatabaseIcon size={18} />
         </span>
-      )}
-      {connectingId && <span role="status">Connecting…</span>}
+        <span className="titlebar-name">PG Studio</span>
+      </div>
+      <button
+        className="quick-open-trigger no-drag"
+        onClick={onQuickOpen}
+        aria-label="Quick open"
+        aria-keyshortcuts="Control+k Meta+k"
+      >
+        <SearchIcon size={14} />
+        <span>Find a table or connection</span>
+        <kbd>{/Mac/.test(navigator.platform) ? "⌘" : "Ctrl"} K</kbd>
+      </button>
+      <div className="connection-presence">
+        {connectedId && !connectingId && (
+          <span className="environment-badge" title="Connected">
+            <span className="status-dot" style={{ background: appearance.color }} />
+            {appearance.environment}
+          </span>
+        )}
+        {connectingId ? (
+          <span className="connection-progress" role="status">
+            <span className="loading-spinner" />
+            Connecting…
+          </span>
+        ) : (
+          <span
+            className="titlebar-conn"
+            title={dbMeta ? `${dbMeta.database} · ${dbMeta.host}` : undefined}
+          >
+            {dbMeta?.database ?? "No connection"}
+          </span>
+        )}
+      </div>
       <DisplaySettings />
-    </div>
+    </header>
   );
 }

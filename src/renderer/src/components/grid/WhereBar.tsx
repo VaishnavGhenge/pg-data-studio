@@ -35,11 +35,16 @@ export function WhereBar({ appliedWhere, columns, tableName, onApply, disabled }
           if (!disabled) onApply(text.trim());
         }}
         onEscape={() => setText(appliedWhere)}
-        placeholder="price > 100 AND code LIKE 'I%'"
+        placeholder={
+          columns[0]
+            ? `"${columns[0].name.replace(/"/g, '""')}" IS NOT NULL`
+            : "Enter a SQL condition…"
+        }
         ariaLabel="WHERE clause"
         tableName={tableName}
         columnNames={columns.map((c) => c.name)}
       />
+      {!pending && !appliedWhere && <kbd className="where-key-hint">↵ to apply</kbd>}
       {/* Apply only earns a slot once the text differs from what ran; Enter
           does the same thing and the button is dead weight until then. */}
       {pending && (

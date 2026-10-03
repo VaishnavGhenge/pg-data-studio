@@ -2,28 +2,44 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTableState, useWorkspaceRequests } from "../../state/tableStore";
 import { useSourcesState } from "../../state/sourcesStore";
 import { useTableActions } from "../../hooks/useTableActions";
-import { useToast } from "../../state/toastStore";
 import { buildUpdatePreview } from "../../lib/sqlPreview";
 import { dirtyKey, groupDirtyByRow } from "../../lib/dirty";
 import { displayRowKey } from "../../lib/rowKey";
 import { InteractiveGrid } from "./InteractiveGrid";
-import { RefreshIcon, UndoIcon, RedoIcon, CloseIcon } from "../common/icons";
+import {
+  RefreshIcon,
+  UndoIcon,
+  RedoIcon,
+  CloseIcon,
+  SearchIcon,
+  FunnelIcon,
+} from "../common/icons";
 import { WhereBar } from "./WhereBar";
 import { Pager } from "./Pager";
 import { SaveConfirmModal } from "./SaveConfirmModal";
+import { WorkspaceWelcome } from "../layout/WorkspaceWelcome";
 
-export function TableView() {
+export function TableView({
+  onNewSource,
+  onQuickOpen,
+}: {
+  onNewSource: () => void;
+  onQuickOpen: () => void;
+}) {
   const state = useTableState();
   const sources = useSourcesState();
   const actions = useTableActions();
   const requests = useWorkspaceRequests();
-  const { show: toast } = useToast();
   const [quickFilter, setQuickFilter] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [count, setCount] = useState<string | null>(null);
   const [counting, setCounting] = useState(false);
   const [countError, setCountError] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(!!state.where);
+  useEffect(() => {
+    if (state.where) setFiltersOpen(true);
+  }, [state.where]);
   const countVersion = useRef(0);
   const searchRef = useRef<HTMLInputElement>(null);
   const source = sources.sources.find((s) => s.id === sources.connectedId);
@@ -121,30 +137,32 @@ export function TableView() {
     }
   }
   if (!state.current)
-    return (
-      <div className="workspace-empty">
-        <h2>{source ? "Choose a table" : "Connect to a database"}</h2>
-        <p>
-          {source
-            ? "Open a table from the sidebar. Your tables stay available in tabs."
-            : "Use + in the sidebar to add a connection, or choose a saved source."}
-        </p>
-      </div>
-    );
+    return <WorkspaceWelcome onNewSource={onNewSource} onQuickOpen={onQuickOpen} />;
   return (
     <>
       <div className="table-heading">
-        <strong>
-          {source?.name ?? "Database"} <span>/ {state.current.schema} /</span> {state.current.name}
-        </strong>
-        {!state.loading && state.columns.length > 0 && (
-          <span className="badge">
-            {state.pk.length ? "Editable" : "Read-only · no primary key"}
-          </span>
-        )}
+        <div className="table-heading-copy">
+          <div className="table-breadcrumb">
+            <span>{source?.name ?? "Database"}</span>
+            <span>/</span>
+            <span>{state.current.schema}</span>
+          </div>
+          <div className="table-title-line">
+            <h1>{state.current.name}</h1>
+            {!state.loading && state.columns.length > 0 && !state.pk.length && (
+              <span className="table-access">Read-only · no primary key</span>
+            )}
+          </div>
+        </div>
+        <div className="table-heading-meta">
+          <span>{state.columns.length} columns</span>
+        </div>
       </div>
       <div className="toolbar">
         <div className="search-wrap">
+          <span className="search-symbol">
+            <SearchIcon size={15} />
+          </span>
           <input
             ref={searchRef}
             className="filter page-search"
@@ -152,6 +170,9 @@ export function TableView() {
             aria-label="Search this page"
             value={quickFilter}
             onChange={(e) => setQuickFilter(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setQuickFilter("");
+            }}
           />
           {quickFilter && (
             <button
@@ -162,7 +183,24 @@ export function TableView() {
               <CloseIcon size={12} />
             </button>
           )}
+          {!quickFilter && (
+            <kbd className="search-key-hint">{/Mac/.test(navigator.platform) ? "⌘" : "Ctrl"} F</kbd>
+          )}
         </div>
+        <button
+          className={"btn ghost filter-toggle" + (filtersOpen || hasFilters ? " active" : "")}
+          aria-expanded={filtersOpen}
+          aria-controls="table-filters"
+          onClick={() => setFiltersOpen(!filtersOpen)}
+        >
+          <FunnelIcon size={14} />
+          Filters
+          {hasFilters && (
+            <span className="filter-count">
+              {Object.keys(state.colFilters).length + (state.where ? 1 : 0)}
+            </span>
+          )}
+        </button>
         <button
           className="btn ghost icon-only"
           title="Refresh this page of rows"
@@ -173,24 +211,36 @@ export function TableView() {
           <RefreshIcon size={14} />
         </button>
         <span className="spacer" />
-        <button
-          className="btn ghost icon-only"
-          title="Undo pending edit (⌘/Ctrl Z)"
-          aria-label="Undo"
-          disabled={!state.past.length || blocked}
-          onClick={actions.undo}
-        >
-          <UndoIcon size={14} />
-        </button>
-        <button
-          className="btn ghost icon-only"
-          title="Redo pending edit (⌘/Ctrl Shift Z)"
-          aria-label="Redo"
-          disabled={!state.future.length || blocked}
-          onClick={actions.redo}
-        >
-          <RedoIcon size={14} />
-        </button>
+        <span className={"edit-summary" + (dirtyCount ? " pending" : "")} aria-live="polite">
+          {dirtyCount ? (
+            <>
+              <span className="status-dot" />
+              {dirtyCount} pending {dirtyCount === 1 ? "change" : "changes"}
+            </>
+          ) : (
+            <>Up to date</>
+          )}
+        </span>
+        <div className="history-controls">
+          <button
+            className="btn ghost icon-only"
+            title="Undo pending edit (⌘/Ctrl Z)"
+            aria-label="Undo"
+            disabled={!state.past.length || blocked}
+            onClick={actions.undo}
+          >
+            <UndoIcon size={14} />
+          </button>
+          <button
+            className="btn ghost icon-only"
+            title="Redo pending edit (⌘/Ctrl Shift Z)"
+            aria-label="Redo"
+            disabled={!state.future.length || blocked}
+            onClick={actions.redo}
+          >
+            <RedoIcon size={14} />
+          </button>
+        </div>
         {/* Revert all is dead weight with nothing to revert, so it only shows
             up once there are pending edits. Save stays put: it anchors the
             row and its count is the edit tally. */}
@@ -208,21 +258,32 @@ export function TableView() {
           disabled={!dirtyCount || blocked}
           onClick={() => setPreviewOpen(true)}
         >
-          Save changes{dirtyCount ? " (" + dirtyCount + ")" : ""}
+          Review changes{dirtyCount ? " (" + dirtyCount + ")" : ""}
         </button>
       </div>
-      <WhereBar
-        appliedWhere={state.where}
-        columns={state.columns}
-        tableName={state.current.name}
-        onApply={actions.applyWhere}
-        disabled={blocked}
-      />
+      <div id="table-filters" className="filter-panel" hidden={!filtersOpen}>
+        <div className="filter-panel-heading">
+          <span>Filter the full table</span>
+          <small>Use a SQL expression. Page search only checks loaded rows.</small>
+        </div>
+        <WhereBar
+          appliedWhere={state.where}
+          columns={state.columns}
+          tableName={state.current.name}
+          onApply={actions.applyWhere}
+          disabled={blocked}
+        />
+      </div>
       {/* The WHERE clause is already spelled out in the bar above with its own
           clear button, so it gets no chip here. This row is for the filters
           that have nowhere else to show themselves. */}
       {(Object.keys(state.colFilters).length > 0 || state.sortCol) && (
         <div className="filter-chips">
+          {state.sortCol && (
+            <span className="sort-chip">
+              Sorted by {state.sortCol} · {state.sortDir === "asc" ? "ascending" : "descending"}
+            </span>
+          )}
           {Object.entries(state.colFilters).map(([col, f]) => (
             <button key={col} disabled={blocked} onClick={() => actions.applyColFilter(col, null)}>
               {col} {f.op} {f.value} ×
@@ -241,6 +302,7 @@ export function TableView() {
       )}
       {state.loading && (
         <div className="query-feedback" role="status">
+          <span className="loading-spinner" />
           {state.rows.length ? "Refreshing rows…" : "Loading rows…"}
         </div>
       )}
@@ -288,8 +350,8 @@ export function TableView() {
               onPrev={() => actions.goToPage(-1)}
               onNext={() => actions.goToPage(1)}
             />
-            <label>
-              Page size{" "}
+            <label className="page-size-control">
+              Rows per page{" "}
               <select
                 aria-label="Page size"
                 disabled={blocked}
@@ -303,8 +365,9 @@ export function TableView() {
                 ))}
               </select>
             </label>
-            <span>
-              {visibleRows.length} shown · {state.ms} ms
+            <span className="query-timing" title="Database query time">
+              {visibleRows.length.toLocaleString()} shown <span className="metadata-divider" />
+              {state.ms} ms
             </span>
             {dirtyCount > 0 && (
               <span className="pending-count">
@@ -318,25 +381,6 @@ export function TableView() {
               <button className="btn ghost" disabled={blocked || counting} onClick={exactCount}>
                 {counting ? "Counting…" : "Count matching rows"}
               </button>
-            )}
-            {state.previewSql && (
-              <details className="query-preview">
-                <summary>SQL</summary>
-                <div>
-                  <pre>{state.previewSql}</pre>
-                  <button
-                    className="btn ghost"
-                    onClick={() =>
-                      navigator.clipboard.writeText(state.previewSql).then(
-                        () => toast("Copied query"),
-                        () => toast("Could not copy query", true),
-                      )
-                    }
-                  >
-                    Copy SQL
-                  </button>
-                </div>
-              </details>
             )}
             {countError && (
               <span className="inline-error" role="alert">

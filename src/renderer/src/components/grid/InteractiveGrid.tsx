@@ -19,7 +19,8 @@ import { ColumnChooser } from "./ColumnChooser";
 import { GridHeaderCell } from "./GridHeaderCell";
 import { ColumnFilterPopover } from "./ColumnFilterPopover";
 import { ContextMenu } from "../common/ContextMenu";
-import { ColumnsIcon } from "../common/icons";
+import { Modal } from "../common/Modal";
+import { CloseIcon, CodeIcon, ColumnsIcon } from "../common/icons";
 import { ValueInspector } from "./ValueInspector";
 import { useToast } from "../../state/toastStore";
 
@@ -48,6 +49,7 @@ export function InteractiveGrid({
   const storageKey = `columns:${JSON.stringify([connectedId, current?.schema, current?.name])}`;
   const { layout, setLayout, resize, autoFit } = useColumnLayout(storageKey);
   const [columnsOpen, setColumnsOpen] = useState(false);
+  const [sqlOpen, setSqlOpen] = useState(false);
   const [inspecting, setInspecting] = useState(false);
   const [anchor, setAnchor] = useState<GridPoint>({ row: 0, col: 0 });
   const [selected, setSelected] = useState<GridPoint>({ row: 0, col: 0 });
@@ -511,17 +513,69 @@ export function InteractiveGrid({
         {status}
         <span className="spacer" />
         {selectedCells > 1 && <span>{selectedCells} cells selected</span>}
-        {state.columns.length > 0 && (
-          <button
-            className="btn ghost"
-            aria-expanded={columnsOpen}
-            title="Show, hide and pin columns"
-            onClick={() => setColumnsOpen(!columnsOpen)}
-          >
-            <ColumnsIcon size={13} /> Columns
-          </button>
-        )}
+        <div className="table-view-actions">
+          {state.previewSql && (
+            <button
+              className="btn ghost"
+              aria-haspopup="dialog"
+              aria-expanded={sqlOpen}
+              onClick={() => setSqlOpen(true)}
+            >
+              <CodeIcon size={13} /> View SQL
+            </button>
+          )}
+          {state.columns.length > 0 && (
+            <button
+              className="btn ghost"
+              aria-haspopup="dialog"
+              aria-expanded={columnsOpen}
+              title="Show, hide and pin columns"
+              onClick={() => setColumnsOpen(!columnsOpen)}
+            >
+              <ColumnsIcon size={13} /> Columns
+            </button>
+          )}
+        </div>
       </footer>
+      <Modal
+        open={sqlOpen}
+        onClose={() => setSqlOpen(false)}
+        className="query-dialog"
+        labelledBy="query-dialog-title"
+        describedBy="query-dialog-description"
+      >
+        <div className="modal-head">
+          <h2 id="query-dialog-title">View SQL</h2>
+          <button
+            className="icon-btn"
+            onClick={() => setSqlOpen(false)}
+            aria-label="Close SQL preview"
+            title="Close SQL preview"
+          >
+            <CloseIcon size={15} />
+          </button>
+        </div>
+        <p id="query-dialog-description" className="panel-description">
+          Query used to load this page of {current?.schema}.{current?.name}.
+        </p>
+        <pre className="query-code" tabIndex={0} aria-label="SQL query">
+          <code>{state.previewSql}</code>
+        </pre>
+        <div className="panel-footer">
+          <span className="panel-hint">Read-only preview</span>
+          <button
+            className="btn"
+            onClick={() =>
+              navigator.clipboard.writeText(state.previewSql).then(
+                () => toast("Copied query"),
+                () => toast("Could not copy query", true),
+              )
+            }
+          >
+            Copy SQL
+          </button>
+        </div>
+      </Modal>
       {funnel && (
         <ColumnFilterPopover
           column={funnel.col}

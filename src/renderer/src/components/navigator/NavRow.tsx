@@ -9,6 +9,7 @@ interface NavRowProps {
   depth: number;
   icon: ReactNode;
   label: string;
+  subLabel?: string;
   // The current tree-filter query, if this label should highlight its match
   // (only table rows are actually filtered by it — see NavigatorTree).
   matchQuery?: string;
@@ -44,6 +45,7 @@ export function NavRow({
   depth,
   icon,
   label,
+  subLabel,
   matchQuery,
   open,
   active,
@@ -122,7 +124,10 @@ export function NavRow({
         </span>
       )}
       <span className="nic">{icon}</span>
-      <span className="nlabel">{renderLabel(label, matchQuery)}</span>
+      <span className="nav-label-group">
+        <span className="nlabel">{renderLabel(label, matchQuery)}</span>
+        {subLabel && <small className="nav-sublabel">{subLabel}</small>}
+      </span>
       {typeText !== undefined && <span className="ntype">{typeText}</span>}
       {pk && (
         <span className="pkmini" title="primary key">

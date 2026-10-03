@@ -103,9 +103,13 @@ async function main() {
       const wideColumns=Array.from({length:64},(_,i)=>({name:i===0?'id':'field_'+i,dataType:'text',ordinal:i+1,isPk:i===0,notNull:i===0}));
       const wideRecords=Array.from({length:1000},(_,r)=>Object.fromEntries(wideColumns.map((c,i)=>[c.name,i===0?String(r+1):'R'+(r+1)+' C'+i])));
       window.testCalls=[];
+      localStorage.setItem("pgstudio:recent:local",JSON.stringify([{schema:"public",name:"people"}]));
+      let savedSources=[{id:'local',name:'Local demo',host:'localhost',port:5432,database:'demo',user:'demo'}];
       window.api={
-        listSources:()=>ok([{id:'local',name:'Local demo',host:'localhost',port:5432,database:'demo',user:'demo'}]),
-        connect:()=>ok({database:'demo',host:'localhost',serverVersion:'PostgreSQL 17'}),
+        listSources:()=>ok(savedSources),
+        saveSource:source=>{const saved={...source,id:source.id||'new-source'};savedSources=[...savedSources.filter(s=>s.id!==saved.id),saved];return ok(saved)},
+        testConnection:()=>ok({serverVersion:'PostgreSQL 17'}),
+        connect:()=>{if(window.failNextConnect){window.failNextConnect=false;return Promise.resolve({ok:false,error:'Connection refused for test'})}return ok({database:'demo',host:'localhost',serverVersion:'PostgreSQL 17'})},
         disconnect:()=>ok(true),
         listTables:()=>ok([{schema:'public',name:'people',estRows:230},{schema:'public',name:'books',estRows:230},{schema:'public',name:'wide_grid',estRows:1000}]),
         tableColumns:(_s,t)=>ok({columns:t==='wide_grid'?wideColumns:columns,pk:['id']}),
@@ -124,6 +128,11 @@ async function main() {
     });
     await send("Page.navigate", { url: "http://127.0.0.1:" + server.address().port });
     await delay(500);
+    assert.equal(await evaluate(`document.querySelectorAll('.connection-card').length`), 1);
+    assert.match(
+      await evaluate(`document.querySelector('.welcome-content h1').textContent`),
+      /Connect to PostgreSQL/,
+    );
     await evaluate(`window.clickText=(text)=>{const el=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===text);if(!el)throw Error('Missing button: '+text);el.click()};
       window.key=(el,key,extra={})=>el.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true,...extra}));
       window.setInput=(el,value)=>{Object.getOwnPropertyDescriptor(el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set.call(el,value);el.dispatchEvent(new Event('input',{bubbles:true}))};
@@ -136,6 +145,95 @@ async function main() {
       "201",
     );
     assert.ok(await evaluate(`document.querySelectorAll('.grid-data-row').length < 60`));
+    // Starring a table never opens it or queries rows, and all star controls agree.
+    const queriesBeforeStar = await evaluate(`window.testCalls.length`);
+    await evaluate(
+      `document.querySelector('.nrow.table[title="public.books"] .favorite-button').click()`,
+    );
+    await waitFor(`!!document.querySelector('[aria-label="Favorites"] .shortcut-name')`);
+    assert.equal(
+      await evaluate(
+        `document.querySelector('[aria-label="Favorites"] .shortcut-name').textContent`,
+      ),
+      "books",
+    );
+    assert.equal(
+      await evaluate(`document.querySelector('[role="tab"][aria-selected="true"]').title`),
+      "public.people",
+    );
+    assert.equal(await evaluate(`window.testCalls.length`), queriesBeforeStar);
+    assert.deepEqual(
+      await evaluate(`JSON.parse(localStorage.getItem('pgstudio:favorites:local'))`),
+      [{ schema: "public", name: "books" }],
+    );
+    await evaluate(
+      `document.querySelector('[aria-label="Favorites"] .favorite-button').focus();document.activeElement.click()`,
+    );
+    await waitFor(`!document.querySelector('[aria-label="Favorites"]')`);
+    await waitFor(
+      `document.activeElement.getAttribute('aria-label')==='Add public.books to favorites'`,
+    );
+    assert.equal(
+      await evaluate(
+        `document.querySelector('.nrow.table[title="public.books"] .favorite-button').getAttribute('aria-pressed')`,
+      ),
+      "false",
+    );
+    await evaluate(`document.querySelector('.table-tab.active .favorite-button').click()`);
+    await waitFor(
+      `document.querySelector('.nrow.table[title="public.people"] .favorite-button').getAttribute('aria-pressed')==='true'`,
+    );
+    assert.equal(
+      await evaluate(
+        `document.querySelector('[aria-label="Favorites"] .shortcut-name').textContent`,
+      ),
+      "people",
+    );
+    await evaluate(`document.querySelector('[aria-label="Favorites"] .shortcut-heading').click()`);
+    await waitFor(`document.querySelector('#shortcut-list-favorites').hidden`);
+    assert.equal(
+      await evaluate(
+        `JSON.parse(localStorage.getItem('pgstudio:sidebar-section:local:favorites'))`,
+      ),
+      false,
+    );
+    await evaluate(`document.querySelector('[aria-label="Favorites"] .shortcut-heading').click()`);
+    await waitFor(`!document.querySelector('#shortcut-list-favorites').hidden`);
+    await evaluate(`document.querySelector('.table-tab.active .favorite-button').click()`);
+    await waitFor(`!document.querySelector('[aria-label="Favorites"]')`);
+    assert.equal(await evaluate(`document.querySelector('[aria-label="Recent tables"]')`), null);
+    // New workspace navigation is usable entirely from the keyboard.
+    await evaluate(
+      `document.querySelector('.interactive-grid').focus();key(document.querySelector('.interactive-grid'),'k',{ctrlKey:true})`,
+    );
+    await waitFor(`document.querySelectorAll('.quick-open-result').length===3`);
+    assert.equal(await evaluate(`document.activeElement.getAttribute('role')`), "combobox");
+    await evaluate(`key(document.activeElement,'ArrowDown')`);
+    await waitFor(
+      `document.activeElement.getAttribute('aria-activedescendant')==='quick-result-1'`,
+    );
+    await evaluate(`setInput(document.activeElement,'no-table-with-this-name')`);
+    await waitFor(`document.querySelectorAll('.quick-open-result').length===0`);
+    assert.equal(
+      await evaluate(`document.activeElement.getAttribute('aria-activedescendant')`),
+      null,
+    );
+    await evaluate(`key(document.activeElement,'Enter')`);
+    assert.ok(await evaluate(`!!document.querySelector('.quick-open')`));
+    await evaluate(`key(document.activeElement,'Escape')`);
+    await waitFor(`!document.querySelector('.quick-open')`);
+    assert.equal(await evaluate(`document.activeElement.className`), "interactive-grid");
+    assert.equal(await evaluate(`document.querySelector('#table-filters').hidden`), true);
+    await evaluate(`document.querySelector('.filter-toggle').click()`);
+    await waitFor(
+      `document.querySelector('.filter-toggle').getAttribute('aria-expanded')==='true' && !document.querySelector('#table-filters').hidden`,
+    );
+    await evaluate(`document.querySelector('.filter-toggle').click()`);
+    await waitFor(`document.querySelector('#table-filters').hidden`);
+    await evaluate(`document.querySelector('.source-menu').click()`);
+    await waitFor(`!!document.querySelector('.ctx-menu')`);
+    await evaluate(`key(document.activeElement,'Escape')`);
+    await waitFor(`!document.querySelector('.ctx-menu')`);
     await evaluate(
       `const table=document.querySelector('.interactive-grid');table.focus();key(table,'ArrowRight');`,
     );
@@ -155,14 +253,48 @@ async function main() {
     assert.equal(await evaluate(`document.querySelector('.pending-count')`), null);
     await evaluate(`document.querySelector('[aria-label="Redo"]').click()`);
     await delay(30);
+    await evaluate(`document.querySelector('.table-tab.active .favorite-button').click()`);
+    await waitFor(`!!document.querySelector('[aria-label="Favorites"]')`);
+    await evaluate(
+      `document.querySelector('.nrow.table[title="public.books"] .favorite-button').click()`,
+    );
+    await waitFor(
+      `document.querySelectorAll('[aria-label="Favorites"] .shortcut-name').length===2`,
+    );
     await evaluate(
       `[...document.querySelectorAll('.nrow.table')].find(e=>e.textContent.includes('books')).click()`,
     );
     await delay(100);
     assert.equal(await evaluate(`document.querySelectorAll('[role=tab]').length`), 2);
-    await evaluate(`document.querySelector('[role=tab]').click()`);
+    assert.deepEqual(
+      await evaluate(
+        `Array.from(document.querySelectorAll('[aria-label="Favorites"] .shortcut-name')).map(e=>e.textContent)`,
+      ),
+      ["people", "books"],
+    );
+    // Home/End selects tabs; opening favorites preserves edits and list order.
+    await evaluate(
+      `document.querySelector('[role="tab"][aria-selected="true"]').focus();key(document.activeElement,'Home')`,
+    );
+    await waitFor(
+      `document.querySelector('[role="tab"][aria-selected="true"]').title==='public.people'`,
+    );
+    assert.equal(await evaluate(`document.activeElement.getAttribute('aria-selected')`), "true");
+    await evaluate(`key(document.activeElement,'End')`);
+    await waitFor(
+      `document.querySelector('[role="tab"][aria-selected="true"]').title==='public.books'`,
+    );
+    await evaluate(
+      `document.querySelector('[aria-label="Favorites"] [aria-label="Open public.people"]').click()`,
+    );
     await delay(70);
     assert.match(await evaluate(`document.querySelector('.pending-count').textContent`), /1 cell/);
+    assert.deepEqual(
+      await evaluate(
+        `Array.from(document.querySelectorAll('[aria-label="Favorites"] .shortcut-name')).map(e=>e.textContent)`,
+      ),
+      ["people", "books"],
+    );
     await evaluate(`document.querySelector('.toolbar .btn.primary').click()`);
     await delay(50);
     assert.equal(await evaluate(`document.querySelectorAll('.change-review tbody tr').length`), 1);
@@ -176,7 +308,34 @@ async function main() {
     await evaluate(`key(document.querySelector('.interactive-grid'),'c',{ctrlKey:true})`);
     await delay(30);
     assert.equal(await evaluate(`window.clipboardText`), "1\tPerson 1\n2\tPerson 2");
+    const gridHeight = await evaluate(`document.querySelector('.grid-scroll').clientHeight`);
+    await evaluate(
+      `document.querySelector('.table-view-actions button').focus(); clickText('View SQL')`,
+    );
+    await delay(40);
+    assert.equal(await evaluate(`document.querySelector('.grid-scroll').clientHeight`), gridHeight);
+    await evaluate(`clickText('Copy SQL')`);
+    await delay(30);
+    assert.equal(
+      await evaluate(`window.clipboardText`),
+      await evaluate(`document.querySelector('.query-code').textContent`),
+    );
+    await evaluate(`key(document.activeElement, 'Escape')`);
+    await delay(30);
+    assert.equal(await evaluate(`document.querySelector('.query-dialog')`), null);
+    assert.equal(await evaluate(`document.activeElement.textContent.trim()`), "View SQL");
     await evaluate(`clickText('Columns')`);
+    await delay(30);
+    assert.equal(await evaluate(`document.querySelector('.grid-scroll').clientHeight`), gridHeight);
+    assert.equal(
+      await evaluate(`document.activeElement.getAttribute('aria-label')`),
+      "Find columns",
+    );
+    await evaluate(`setInput(document.activeElement,'missing-column')`);
+    await delay(30);
+    assert.equal(await evaluate(`document.querySelectorAll('.column-chooser input').length`), 0);
+    assert.ok(await evaluate(`!!document.querySelector('.column-empty')`));
+    await evaluate(`setInput(document.querySelector('.column-search'),'')`);
     await delay(30);
     await evaluate(`document.querySelector('.column-chooser input').click()`);
     await delay(30);
@@ -192,6 +351,9 @@ async function main() {
     await delay(30);
     await evaluate(`key(document.querySelector('.interactive-grid'),'F2')`);
     await delay(30);
+    assert.ok(
+      await evaluate(`!!document.querySelector('[aria-label="Close inspector"].icon-btn svg')`),
+    );
     await evaluate(`clickText('Format JSON')`);
     await delay(30);
     assert.match(
@@ -221,9 +383,11 @@ async function main() {
 
     // Virtualization must preserve logical coordinates, including navigation,
     // editing and copying cells that are outside the mounted window.
-    await evaluate(
-      `[...document.querySelectorAll('.nrow.table')].find(e=>e.querySelector('.nlabel')?.textContent==='wide_grid').click()`,
-    );
+    await evaluate(`document.querySelector('.quick-open-trigger').click()`);
+    await waitFor(`!!document.querySelector('.quick-open input')`);
+    await evaluate(`setInput(document.querySelector('.quick-open input'),'wide_grid')`);
+    await waitFor(`document.querySelectorAll('.quick-open-result').length===1`);
+    await evaluate(`key(document.querySelector('.quick-open input'),'Enter')`);
     await waitFor(
       `document.querySelector('.table-heading').textContent.includes('wide_grid') && !document.querySelector('.query-feedback')`,
     );
@@ -323,12 +487,126 @@ async function main() {
       "Last row stays aligned after density and font changes",
     );
     assert.ok(last.rows < 60);
+    // Light mode and both explicit/system reduced-motion settings stay usable.
+    await evaluate(`clickText('Display settings')`);
+    await waitFor(`!!document.querySelector('.settings-form')`);
+    await evaluate(
+      `(()=>{const selects=document.querySelectorAll('.settings-form select');selects[0].value='light';selects[0].dispatchEvent(new Event('change',{bubbles:true}));selects[3].value='reduced';selects[3].dispatchEvent(new Event('change',{bubbles:true}))})()`,
+    );
+    await waitFor(
+      `document.documentElement.dataset.theme==='light' && document.documentElement.dataset.motion==='reduced'`,
+    );
+    assert.equal(
+      await evaluate(`getComputedStyle(document.querySelector('.modal')).animationName`),
+      "none",
+    );
+    await evaluate(`clickText('Done')`);
+    await delay(50);
+    await evaluate(`document.querySelector('.quick-open-trigger').click()`);
+    await waitFor(`!!document.querySelector('.quick-open')`);
+    assert.equal(
+      await evaluate(`getComputedStyle(document.querySelector('.quick-open')).animationName`),
+      "none",
+    );
+    await evaluate(`key(document.activeElement,'Escape')`);
+    await waitFor(`!document.querySelector('.quick-open')`);
+    await evaluate(`clickText('Display settings')`);
+    await waitFor(`!!document.querySelector('.settings-form')`);
+    await evaluate(
+      `(()=>{const selects=document.querySelectorAll('.settings-form select');selects[0].value='dark';selects[0].dispatchEvent(new Event('change',{bubbles:true}));selects[3].value='auto';selects[3].dispatchEvent(new Event('change',{bubbles:true}))})()`,
+    );
+    await evaluate(`clickText('Done')`);
+    await delay(50);
+    await send("Emulation.setEmulatedMedia", {
+      features: [{ name: "prefers-reduced-motion", value: "reduce" }],
+    });
+    await evaluate(`document.querySelector('.quick-open-trigger').click()`);
+    await waitFor(`!!document.querySelector('.quick-open')`);
+    assert.equal(
+      await evaluate(`getComputedStyle(document.querySelector('.quick-open')).animationName`),
+      "none",
+    );
+    await evaluate(`key(document.activeElement,'Escape')`);
+    await send("Emulation.setEmulatedMedia", { features: [] });
+    // Failed connections keep the form, exact error and edited values available.
+    await evaluate(`document.querySelector('.source-menu').click()`);
+    await waitFor(`!!document.querySelector('.ctx-menu')`);
+    await evaluate(`clickText('Edit…')`);
+    await waitFor(`!!document.querySelector('#srcName')`);
+    await evaluate(`window.failNextConnect=true;clickText('Connect')`);
+    await waitFor(`!!document.querySelector('.connect-error')`);
+    assert.match(
+      await evaluate(`document.querySelector('.connect-error').textContent`),
+      /Connection refused/,
+    );
+    assert.equal(await evaluate(`document.querySelector('#srcName').value`), "Local demo");
+    assert.ok(await evaluate(`!!document.querySelector('.ndot.connected')`));
+    await evaluate(`clickText('Cancel')`);
+    await waitFor(`!document.querySelector('[aria-modal="true"]')`);
+    assert.equal(await evaluate(`document.querySelectorAll('.nrow.source').length`), 1);
+    // Retrying a newly saved connection must reuse its ID, not duplicate it.
+    await evaluate(`document.querySelector('[aria-label="New data source"]').click()`);
+    await waitFor(`!!document.querySelector('#srcName')`);
+    await evaluate(
+      `setInput(document.querySelector('#srcName'),'Retry demo');setInput(document.querySelector('#srcDatabase'),'demo');setInput(document.querySelector('#srcUser'),'demo')`,
+    );
+    await delay(30);
+    await evaluate(`window.failNextConnect=true;clickText('Connect')`);
+    await waitFor(`!!document.querySelector('.connect-error')`);
+    assert.equal(await evaluate(`document.querySelectorAll('.nrow.source').length`), 2);
+    await evaluate(`clickText('Connect')`);
+    await waitFor(
+      `!document.querySelector('[aria-modal="true"]') && !!document.querySelector('.welcome-content')`,
+    );
+    assert.equal(await evaluate(`document.querySelectorAll('.nrow.source').length`), 2);
+    await evaluate(`document.querySelector('.welcome-actions .btn.primary').click()`);
+    await waitFor(`!!document.querySelector('.quick-open input')`);
+    await evaluate(`setInput(document.querySelector('.quick-open input'),'wide_grid')`);
+    await waitFor(`document.querySelectorAll('.quick-open-result').length===1`);
+    await evaluate(`key(document.querySelector('.quick-open input'),'Enter')`);
+    await waitFor(
+      `!!document.querySelector('.interactive-grid') && !document.querySelector('.query-feedback')`,
+    );
+    await evaluate(`clickText('Display settings')`);
+    await waitFor(`!!document.querySelector('.settings-form')`);
+    await evaluate(
+      `(()=>{const selects=document.querySelectorAll('.settings-form select');selects[1].value='compact';selects[1].dispatchEvent(new Event('change',{bubbles:true}));selects[2].value='12';selects[2].dispatchEvent(new Event('change',{bubbles:true}))})()`,
+    );
+    await evaluate(`clickText('Done')`);
+    await send("Emulation.setDeviceMetricsOverride", {
+      width: 900,
+      height: 560,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await delay(100);
+    assert.ok(
+      await evaluate(`document.documentElement.scrollWidth <= innerWidth`),
+      "Workspace fits the minimum desktop width",
+    );
+    assert.ok(
+      await evaluate(`document.querySelector('.grid-scroll').clientHeight >= 100`),
+      "Grid stays usable at the minimum desktop height",
+    );
+    await send("Emulation.clearDeviceMetricsOverride");
+    await delay(100);
+    // Closing a tab from the keyboard moves focus to its surviving neighbor.
+    await evaluate(`document.querySelector('.nrow.table[title="public.people"]').click()`);
+    await waitFor(
+      `document.querySelectorAll('[role="tab"]').length===2 && document.querySelector('.table-heading h1').textContent==='people'`,
+    );
+    await evaluate(
+      `document.querySelector('[role="tab"][aria-selected="true"]').focus();key(document.activeElement,'Delete')`,
+    );
+    await waitFor(
+      `document.querySelectorAll('[role="tab"]').length===1 && document.activeElement.getAttribute('role')==='tab' && document.activeElement.getAttribute('aria-selected')==='true'`,
+    );
     const screenshot = await send("Page.captureScreenshot", { format: "png" });
     const screenshotPath = path.join(os.tmpdir(), "pgstudio-ui-smoke.png");
     fs.writeFileSync(screenshotPath, Buffer.from(screenshot.data, "base64"));
     assert.deepEqual(errors, []);
     console.log(
-      "UI smoke passed: editing, history, tabs, review, TSV, columns, inspector, theme, pagination, count; virtualized offscreen navigation/editing, full-page copy, pinned columns, density and font changes.",
+      "UI smoke passed: editing, history, tabs, review, TSV, columns, inspector, theme, pagination, count; virtualization; welcome, quick-open keyboard/focus, filter panel, connection actions/failure, light/dark themes and reduced motion; favorite synchronization/persistence and stable ordering/collapse, no redundant recents, tab keyboard navigation and close focus.",
     );
     console.log("Screenshot: " + screenshotPath);
   } finally {

@@ -19,9 +19,82 @@ function Lucide({ path, size = 14 }: IconProps & { path: React.ReactNode }) {
       strokeWidth={2}
       strokeLinecap="round"
       strokeLinejoin="round"
+      aria-hidden="true"
     >
       {path}
     </svg>
+  );
+}
+
+export function SearchIcon({ size = 16 }: IconProps) {
+  return (
+    <Lucide
+      size={size}
+      path={
+        <>
+          <circle cx="10.5" cy="10.5" r="6.5" />
+          <path d="m16 16 4.5 4.5" />
+        </>
+      }
+    />
+  );
+}
+
+export function StarIcon({ size = 14, filled = false }: IconProps & { filled?: boolean }) {
+  return (
+    <Lucide
+      size={size}
+      path={
+        <path
+          d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9Z"
+          fill={filled ? "currentColor" : "none"}
+        />
+      }
+    />
+  );
+}
+
+export function SettingsIcon({ size = 16 }: IconProps) {
+  return (
+    <Lucide
+      size={size}
+      path={
+        <>
+          <path d="M4 7h16M4 17h16" />
+          <circle cx="9" cy="7" r="2" fill="var(--panel)" />
+          <circle cx="15" cy="17" r="2" fill="var(--panel)" />
+        </>
+      }
+    />
+  );
+}
+
+export function MoreIcon({ size = 16 }: IconProps) {
+  return (
+    <Lucide
+      size={size}
+      path={
+        <>
+          <circle cx="5" cy="12" r="1" />
+          <circle cx="12" cy="12" r="1" />
+          <circle cx="19" cy="12" r="1" />
+        </>
+      }
+    />
+  );
+}
+
+export function KeyboardIcon({ size = 16 }: IconProps) {
+  return (
+    <Lucide
+      size={size}
+      path={
+        <>
+          <rect x="2" y="5" width="20" height="14" rx="3" />
+          <path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M7 15h10" />
+        </>
+      }
+    />
   );
 }
 

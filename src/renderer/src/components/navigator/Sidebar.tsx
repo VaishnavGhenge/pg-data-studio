@@ -3,15 +3,17 @@ import { NavigatorTree } from "./NavigatorTree";
 import { SourceContextMenu } from "./SourceContextMenu";
 import { useSourceActions } from "../../hooks/useSourceActions";
 import { useSourcesState } from "../../state/sourcesStore";
-import { PlusIcon } from "../common/icons";
+import { PlusIcon, SearchIcon, CloseIcon } from "../common/icons";
+import { FavoriteTables } from "./FavoriteTables";
+import { useTableState } from "../../state/tableStore";
 
 interface SidebarProps {
   sideRef: RefObject<HTMLElement | null>;
   onOpenTable: (schema: string, table: string) => void;
   onNewSource: () => void;
   onEditSource: (id: string) => void;
+  onToggleFavorite: (schema: string, name: string) => void;
   favorites?: { schema: string; name: string }[];
-  recent?: { schema: string; name: string }[];
 }
 
 export function Sidebar({
@@ -19,15 +21,16 @@ export function Sidebar({
   onOpenTable,
   onNewSource,
   onEditSource,
+  onToggleFavorite,
   favorites = [],
-  recent = [],
 }: SidebarProps) {
   // The input shows exactly what was typed (including a trailing space);
   // only the trimmed value is used for matching, same as the old renderer.
   const [filterRaw, setFilterRaw] = useState("");
   const [ctxMenu, setCtxMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [refreshSignal, setRefreshSignal] = useState(0);
-  const { connectedId } = useSourcesState();
+  const { connectedId, sources } = useSourcesState();
+  const { current } = useTableState();
   const { disconnect, deleteSource, duplicateSource } = useSourceActions();
   const filterInputRef = useRef<HTMLInputElement>(null);
   const treeRegionRef = useRef<HTMLDivElement>(null);
@@ -42,6 +45,7 @@ export function Sidebar({
     const target = e.target as HTMLElement;
     if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
     if (e.metaKey || e.ctrlKey || e.altKey || e.key.length !== 1) return;
+    if (e.key === " " && target.closest("button, summary")) return;
 
     e.preventDefault();
     if (!connectedId) {
@@ -53,9 +57,9 @@ export function Sidebar({
   }
 
   return (
-    <aside className="side" ref={sideRef}>
+    <aside className="side" ref={sideRef} aria-label="Database navigation">
       <div className="side-head">
-        <span>Databases</span>
+        <span>Explorer</span>
         <div className="side-tools">
           <button
             className="icon-btn"
@@ -68,16 +72,29 @@ export function Sidebar({
         </div>
       </div>
       <div className="tree-filter">
+        <SearchIcon size={14} />
         <input
           ref={filterInputRef}
           className="tree-filter-input"
           spellCheck={false}
           autoComplete="off"
-          placeholder="Filter tables…"
+          placeholder="Find a table…"
           aria-label="Filter tables"
           value={filterRaw}
           onChange={(e) => setFilterRaw(e.target.value)}
         />
+        {filterRaw && (
+          <button
+            className="icon-btn"
+            aria-label="Clear table search"
+            onClick={() => {
+              setFilterRaw("");
+              filterInputRef.current?.focus();
+            }}
+          >
+            <CloseIcon size={12} />
+          </button>
+        )}
       </div>
       <div
         ref={treeRegionRef}
@@ -88,32 +105,27 @@ export function Sidebar({
         }}
         onKeyDown={handleTreeKeyDown}
       >
-        {connectedId &&
-          [
-            { label: "Favorites", items: favorites },
-            { label: "Recent tables", items: recent },
-          ].map(
-            ({ label, items }) =>
-              items.length > 0 && (
-                <details className="table-shortcuts" key={label} open={label === "Favorites"}>
-                  <summary>{label}</summary>
-                  {items
-                    .filter((t) =>
-                      (t.schema + "." + t.name).toLowerCase().includes(filterRaw.toLowerCase()),
-                    )
-                    .map((t) => (
-                      <button key={JSON.stringify(t)} onClick={() => onOpenTable(t.schema, t.name)}>
-                        {t.schema}.{t.name}
-                      </button>
-                    ))}
-                </details>
-              ),
-          )}
+        {connectedId && (
+          <FavoriteTables
+            key={connectedId}
+            connectionId={connectedId}
+            favorites={favorites}
+            current={current}
+            query={filterRaw}
+            onOpen={onOpenTable}
+            onToggleFavorite={onToggleFavorite}
+          />
+        )}
+        <div className="navigation-section-label">
+          Connections <span>{sources.length}</span>
+        </div>
         <NavigatorTree
           filter={filterRaw.trim()}
           refreshSignal={refreshSignal}
           onOpenTable={onOpenTable}
           onSourceContextMenu={(id, x, y) => setCtxMenu({ id, x, y })}
+          favorites={favorites}
+          onToggleFavorite={onToggleFavorite}
         />
       </div>
       {ctxMenu && (

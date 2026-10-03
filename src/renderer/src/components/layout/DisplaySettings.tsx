@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import { Modal } from "../common/Modal";
 import { readPreference, writePreference } from "../../lib/preferences";
 import { useSourcesState } from "../../state/sourcesStore";
+import { CloseIcon, SettingsIcon } from "../common/icons";
 
 interface Preferences {
   theme: "light" | "dark" | "system";
   density: "compact" | "comfortable";
   fontSize: number;
+  motion?: "auto" | "reduced";
 }
 export interface SourceAppearance {
   color: string;
@@ -15,16 +17,21 @@ export interface SourceAppearance {
 export function DisplaySettings() {
   const [open, setOpen] = useState(false);
   const [prefs, setPrefs] = useState<Preferences>(() =>
-    readPreference("display", { theme: "system", density: "compact", fontSize: 12 }),
+    readPreference("display", {
+      theme: "system",
+      density: "compact",
+      fontSize: 12,
+      motion: "auto",
+    }),
   );
   const { connectedId } = useSourcesState();
   const [appearance, setAppearance] = useState<SourceAppearance>({
-    color: "#4c8dff",
+    color: "#708d75",
     environment: "",
   });
   useEffect(() => {
     setAppearance(
-      readPreference("source-appearance:" + connectedId, { color: "#4c8dff", environment: "" }),
+      readPreference("source-appearance:" + connectedId, { color: "#708d75", environment: "" }),
     );
   }, [connectedId]);
   useEffect(() => {
@@ -37,6 +44,7 @@ export function DisplaySettings() {
     apply();
     media.addEventListener("change", apply);
     document.documentElement.dataset.density = prefs.density;
+    document.documentElement.dataset.motion = prefs.motion ?? "auto";
     document.documentElement.style.setProperty("--grid-font-size", prefs.fontSize + "px");
     return () => media.removeEventListener("change", apply);
   }, [prefs]);
@@ -47,15 +55,33 @@ export function DisplaySettings() {
   }
   return (
     <>
-      <button className="titlebar-btn" onClick={() => setOpen(true)}>
-        Display settings
+      <button
+        className="titlebar-btn"
+        onClick={() => setOpen(true)}
+        aria-label="Display settings"
+        title="Display settings"
+      >
+        <SettingsIcon size={16} />
+        <span>Display settings</span>
       </button>
       <Modal open={open} onClose={() => setOpen(false)} labelledBy="display-title">
-        <h2 id="display-title">Display settings</h2>
+        <div className="modal-head">
+          <div>
+            <h2 id="display-title">Display settings</h2>
+          </div>
+          <button
+            className="icon-btn"
+            aria-label="Close display settings"
+            onClick={() => setOpen(false)}
+          >
+            <CloseIcon />
+          </button>
+        </div>
         <div className="settings-form">
           <label>
             Theme
             <select
+              autoFocus
               value={prefs.theme}
               onChange={(e) =>
                 setPrefs({ ...prefs, theme: e.target.value as Preferences["theme"] })
@@ -89,6 +115,16 @@ export function DisplaySettings() {
                   {size}px
                 </option>
               ))}
+            </select>
+          </label>
+          <label>
+            Interface motion
+            <select
+              value={prefs.motion ?? "auto"}
+              onChange={(e) => setPrefs({ ...prefs, motion: e.target.value as "auto" | "reduced" })}
+            >
+              <option value="auto">Minimal transitions</option>
+              <option value="reduced">Reduced motion</option>
             </select>
           </label>
           {connectedId && (

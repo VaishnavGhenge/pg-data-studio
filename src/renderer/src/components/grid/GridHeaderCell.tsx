@@ -77,7 +77,6 @@ export function GridHeaderCell({
             e.stopPropagation();
             onSortClick();
           }}
-          onMouseEnter={showTitleIfTruncated}
         >
           {column.name}
         </button>

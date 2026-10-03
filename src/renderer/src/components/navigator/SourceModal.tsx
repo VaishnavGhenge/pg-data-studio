@@ -4,12 +4,12 @@
 // letting the input re-render with a new value never re-fires onChange, so
 // no extra guard flag is needed.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Modal } from "../common/Modal";
 import { useSourceActions } from "../../hooks/useSourceActions";
 import { useToast } from "../../state/toastStore";
 import { unwrap } from "../../hooks/useApi";
-import { AlertCircleIcon, CheckCircleIcon, DatabaseModalIcon, CloseIcon } from "../common/icons";
+import { AlertCircleIcon, CheckCircleIcon, CloseIcon } from "../common/icons";
 
 interface FormFields {
   name: string;
@@ -108,14 +108,32 @@ interface SourceModalProps {
 }
 
 export function SourceModal({ open, source, onClose }: SourceModalProps) {
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!open) setBusy(false);
+  }, [open]);
   return (
-    <Modal open={open} onClose={onClose} labelledBy="modalTitle">
-      <SourceModalForm source={source} onClose={onClose} />
+    <Modal
+      open={open}
+      onClose={onClose}
+      labelledBy="modalTitle"
+      closeOnBackdrop={!busy}
+      closeOnEscape={!busy}
+    >
+      <SourceModalForm source={source} onClose={onClose} onBusyChange={setBusy} />
     </Modal>
   );
 }
 
-function SourceModalForm({ source, onClose }: { source: Source | null; onClose: () => void }) {
+function SourceModalForm({
+  source,
+  onClose,
+  onBusyChange,
+}: {
+  source: Source | null;
+  onClose: () => void;
+  onBusyChange: (busy: boolean) => void;
+}) {
   const [fields, setFields] = useState<FormFields>(() => fieldsFromSource(source));
   const [url, setUrl] = useState(() => buildUrl(fieldsFromSource(source)));
   const [urlFocused, setUrlFocused] = useState(false);
@@ -123,6 +141,12 @@ function SourceModalForm({ source, onClose }: { source: Source | null; onClose: 
   const [testResult, setTestResult] = useState<{ text: string; ok: boolean } | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const savedId = useRef(source?.id ?? null);
+  const busy = connecting || testing || saving;
+  useEffect(() => {
+    onBusyChange(busy);
+  }, [busy, onBusyChange]);
 
   const { saveSource, connect } = useSourceActions();
   const { show: toast } = useToast();
@@ -147,14 +171,15 @@ function SourceModalForm({ source, onClose }: { source: Source | null; onClose: 
   }
 
   async function handleConnect(f: FormFields = fields) {
+    if (busy) return;
     const err = validate(f);
     if (err) return setFormError(err);
     setFormError("");
     setConnecting(true);
     try {
-      const saved = await saveSource(buildSourceForSubmit(source?.id ?? null, f));
-      onClose();
-      await connect(saved);
+      const saved = await saveSource(buildSourceForSubmit(savedId.current, f));
+      savedId.current = saved.id;
+      if (await connect(saved, setFormError)) onClose();
     } catch (e) {
       setFormError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -163,18 +188,24 @@ function SourceModalForm({ source, onClose }: { source: Source | null; onClose: 
   }
 
   async function handleSave(f: FormFields = fields) {
+    if (busy) return;
     const err = validate(f);
     if (err) return setFormError(err);
+    setSaving(true);
+    setFormError("");
     try {
-      await saveSource(buildSourceForSubmit(source?.id ?? null, f));
+      await saveSource(buildSourceForSubmit(savedId.current, f));
       onClose();
       toast("Saved");
     } catch (e) {
       setFormError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
     }
   }
 
   async function handleTest() {
+    if (busy) return;
     const err = validate(fields);
     if (err) return setFormError(err);
     setFormError("");
@@ -193,9 +224,16 @@ function SourceModalForm({ source, onClose }: { source: Source | null; onClose: 
   return (
     <>
       <div className="modal-head">
-        <DatabaseModalIcon size={20} />
-        <h2 id="modalTitle">{source ? "Edit data source" : "New data source"}</h2>
-        <button className="icon-btn" title="Close" aria-label="Close" onClick={onClose}>
+        <div>
+          <h2 id="modalTitle">{source ? "Edit connection" : "New connection"}</h2>
+        </div>
+        <button
+          className="icon-btn"
+          title="Close"
+          aria-label="Close"
+          onClick={onClose}
+          disabled={busy}
+        >
           <CloseIcon size={15} />
         </button>
       </div>
@@ -326,7 +364,11 @@ function SourceModalForm({ source, onClose }: { source: Source | null; onClose: 
         />
       </div>
 
-      {formError && <div className="connect-error">{formError}</div>}
+      {formError && (
+        <div className="connect-error" role="alert">
+          {formError}
+        </div>
+      )}
 
       <div className="form-actions">
         <span
@@ -339,16 +381,16 @@ function SourceModalForm({ source, onClose }: { source: Source | null; onClose: 
           {testing ? "Testing…" : (testResult?.text ?? "")}
         </span>
         <span className="spacer" />
-        <button className="btn ghost" disabled={testing} onClick={handleTest}>
+        <button className="btn ghost" disabled={busy} onClick={handleTest}>
           {testing ? "Testing…" : "Test"}
         </button>
-        <button className="btn ghost" onClick={() => handleSave()}>
-          Save
+        <button className="btn ghost" disabled={busy} onClick={() => handleSave()}>
+          {saving ? "Saving…" : "Save connection"}
         </button>
-        <button className="btn ghost" onClick={onClose}>
+        <button className="btn ghost" onClick={onClose} disabled={busy}>
           Cancel
         </button>
-        <button className="btn primary" disabled={connecting} onClick={() => handleConnect()}>
+        <button className="btn primary" disabled={busy} onClick={() => handleConnect()}>
           {connecting ? "Connecting…" : "Connect"}
         </button>
       </div>

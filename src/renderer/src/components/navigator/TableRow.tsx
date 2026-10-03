@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { NavRow } from "./NavRow";
 import { TableIcon } from "../common/icons";
 import { fmtCount } from "../../lib/format";
+import { FavoriteButton } from "../common/FavoriteButton";
 
 interface TableRowProps {
   schema: string;
@@ -11,6 +12,8 @@ interface TableRowProps {
   matchQuery: string;
   onOpenTable: () => void;
   onToggleColumns: () => void;
+  favorite: boolean;
+  onToggleFavorite: () => void;
   children?: ReactNode;
 }
 
@@ -22,6 +25,8 @@ export function TableRow({
   matchQuery,
   onOpenTable,
   onToggleColumns,
+  favorite,
+  onToggleFavorite,
   children,
 }: TableRowProps) {
   return (
@@ -35,7 +40,17 @@ export function TableRow({
         open={open}
         active={active}
         title={`${schema}.${table.name}`}
-        trailing={<span className="nmeta">{fmtCount(table.estRows)}</span>}
+        trailing={
+          <>
+            <span className="nmeta">{fmtCount(table.estRows)}</span>
+            <FavoriteButton
+              schema={schema}
+              name={table.name}
+              favorite={favorite}
+              onToggle={onToggleFavorite}
+            />
+          </>
+        }
         onClick={onOpenTable}
         onChevronClick={onToggleColumns}
       />

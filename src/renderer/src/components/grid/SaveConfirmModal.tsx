@@ -1,6 +1,7 @@
 import { Modal } from "../common/Modal";
 import type { DirtyEntry } from "../../lib/dirty";
 import { describeValue } from "../../lib/gridSelection";
+import { CloseIcon } from "../common/icons";
 
 interface SaveConfirmModalProps {
   open: boolean;
@@ -27,11 +28,17 @@ export function SaveConfirmModal({
       labelledBy="savePreviewTitle"
     >
       <div className="modal-head">
-        <h2 id="savePreviewTitle">
-          Save {changes.length} cells in {statements.length}{" "}
-          {statements.length === 1 ? "row" : "rows"}?
-        </h2>
+        <div>
+          <h2 id="savePreviewTitle">Review your changes</h2>
+        </div>
+        <button className="icon-btn" aria-label="Close review" onClick={onCancel} disabled={saving}>
+          <CloseIcon />
+        </button>
       </div>
+      <p className="review-description">
+        {changes.length} {changes.length === 1 ? "cell" : "cells"} across {statements.length}{" "}
+        {statements.length === 1 ? "row" : "rows"}. These changes will be saved together.
+      </p>
       <div className="change-review">
         <table>
           <thead>
@@ -80,6 +87,7 @@ export function SaveConfirmModal({
           Cancel
         </button>
         <button className="btn primary" onClick={onConfirm} disabled={saving}>
+          {saving && <span className="loading-spinner" />}
           {saving ? "Saving…" : "Save"}
         </button>
       </div>

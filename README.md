@@ -57,10 +57,18 @@ trust model as a local `.env`).
 
 - **Browse**: tables grouped by schema in the sidebar, with row counts read
   from `pg_class.reltuples`, so they are planner estimates rather than exact.
-  Right-click a source to edit, duplicate, refresh, disconnect or delete it.
+  Use a connection's **…** menu to edit, duplicate, refresh, disconnect or
+  delete it. Right-click also opens that menu.
+- **Quick open**: press Cmd/Ctrl K to find a table by schema/name or switch to
+  a saved connection. Use the arrow keys and Enter to open a result.
 - **Tabs**: every table you open gets a tab. Switching tabs preserves that
   tab's unsaved edits, sort, filters and page position. Switching connections
-  closes all of them.
+  closes all of them. Arrow keys or Home/End select a focused tab; Delete closes
+  it and moves focus to the remaining tab.
+- **Favorites**: star a table in the sidebar or its tab without opening it.
+  Stars stay in sync across the workspace. The list keeps a stable order,
+  shows the schema separately, and remembers whether it is collapsed per
+  connection. Open tables stay in the tab strip.
 - **View**: 200, 500 or 1000 rows per page with Previous/Next controls;
   server-side sort by clicking a column header, with primary-key ordering to
   break ties. There is no running total: **Count matching rows** in the toolbar
@@ -68,7 +76,8 @@ trust model as a local `.env`).
   it is slow on large tables.
 - **Filter**: a quick client-side search over the loaded page, a server-side
   SQL WHERE expression with syntax highlighting and column-aware completion,
-  and parameterized per-column filters.
+  and parameterized per-column filters. **Filters** opens the SQL condition
+  panel; Cmd/Ctrl F focuses the search for the current page.
 - **Edit**: click a non-key cell to select it, double-click (or Enter) to
   edit. Empty a cell to set `NULL`. Undo and redo pending edits with
   Cmd/Ctrl Z and Cmd/Ctrl Shift Z, up to 100 steps deep.
@@ -79,20 +88,24 @@ trust model as a local `.env`).
   or toggle NULL.
 - **Arrange**: resize, hide and pin columns; pinned ones move to the front and
   stay put while you scroll sideways. The layout is remembered per table.
-- **Review**: dirty cells/rows are highlighted; Save/Revert live in the
-  toolbar with a live pending-change count.
+- **Review**: dirty cells/rows are highlighted; **Review changes** opens a
+  before/after comparison and SQL preview. The toolbar shows the pending-change
+  count and offers undo/redo or **Revert all**.
 - **Save**: all edits apply in one transaction; on failure, nothing is written.
 
-Appearance is configurable per install (theme, density, font size) and per
+Appearance is configurable per install (theme, density, font size, motion) and per
 source (a colour and an environment label, so production looks different from
 staging). Preferences, column layouts and the sidebar width persist in
-`localStorage` under the `pgstudio:` prefix.
+`localStorage` under the `pgstudio:` prefix. The default workspace follows the system
+theme. Brief dialog fades respect the system's reduced-motion setting;
+**Display settings** also provides an explicit reduced-motion option.
 
 Editing needs a primary key: it's what maps an edited cell back to the right row.
 Tables without one are read-only (by design — safer than guessing).
 Values retain PostgreSQL's text representation, including JSON numbers,
 timestamp microseconds, and native array syntax such as `{1,2,3}`. A failed
-connection switch keeps the previous connection available. Saving connections
+connection switch keeps the previous connection available. Failed connection
+attempts from the form preserve its values and show the error for retry. Saving connections
 uses atomic file replacement and reports persistence errors.
 
 ## Architecture
@@ -184,7 +197,7 @@ npm run build
 node tests/ui-smoke.cjs   # after npm run build
 ```
 
-`npm test` runs `tests/*.test.cjs`, currently 27 regression tests covering row
+`npm test` runs `tests/*.test.cjs`, currently 30 regression tests covering row
 identity, asynchronous action ordering, tab snapshots and edit preservation,
 page-size changes, PostgreSQL driver parsing, connection replacement, and
 filesystem failures. `tests/load.cjs` compiles the real TypeScript modules with
