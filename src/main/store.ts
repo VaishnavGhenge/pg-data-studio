@@ -42,6 +42,26 @@ function write(data: StoreData): void {
   }
 }
 
+// Drop a malformed tunnel rather than the whole source, so a hand-edited file
+// still loads.
+function normalizeTunnel(t: unknown): SsmTunnel | null {
+  const o = t as SsmTunnel;
+  if (!o || typeof o.target !== "string" || typeof o.region !== "string") return null;
+  return {
+    target: o.target,
+    region: o.region,
+    profile: typeof o.profile === "string" ? o.profile : "",
+  };
+}
+
+function withValidTunnel(s: Source): Source {
+  if (s.tunnel === undefined) return s;
+  const tunnel = normalizeTunnel(s.tunnel);
+  if (tunnel) return { ...s, tunnel };
+  const { tunnel: _dropped, ...rest } = s;
+  return rest;
+}
+
 function isSource(s: unknown): s is Source {
   const o = s as Source;
   return (
@@ -82,7 +102,7 @@ export function sourceFromUrl(cs: string): Source | null {
 function load(): StoreData {
   const raw = readRaw();
   if (Array.isArray(raw.sources)) {
-    return { sources: raw.sources.filter(isSource) };
+    return { sources: raw.sources.filter(isSource).map(withValidTunnel) };
   }
   const recent = Array.isArray(raw.recent) ? (raw.recent as string[]) : [];
   const sources = recent.map(sourceFromUrl).filter((s): s is Source => s !== null);

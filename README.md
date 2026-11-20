@@ -53,6 +53,22 @@ form (host/port/user/password/database/SSL) that stays in sync with a raw
 remembered for next time (stored in plaintext in the app's user-data dir — same
 trust model as a local `.env`).
 
+### Databases behind an AWS bastion
+
+For a database only reachable from inside a VPC (a private RDS instance, say),
+tick **Connect through an AWS SSM bastion** and enter the bastion's instance id,
+an AWS profile (blank uses your default credentials) and the region. Host and
+port stay the database's own address, as the bastion sees it. On connect the app
+starts `aws ssm start-session` with `AWS-StartPortForwardingSessionToRemoteHost`
+on a free local port and points the pool at it; disconnecting or quitting stops
+the session.
+
+Needs the AWS CLI and the Session Manager plugin
+(`brew install --cask session-manager-plugin`), plus an IAM identity allowed to
+start sessions on that bastion. The app looks for both in `/opt/homebrew/bin`,
+`/usr/local/bin` and `~/.local/bin` as well as `PATH`, since an app launched from
+the Dock doesn't get your shell's `PATH`.
+
 ## What it does
 
 - **Browse**: tables grouped by schema in the sidebar, with row counts read
@@ -118,6 +134,7 @@ src/
     index.ts      Electron entry, window, IPC handlers (thin wrappers), CSP header
     db.ts         All pg access; identifier validation + parameterized SQL
     store.ts      Persists saved data sources
+    tunnel.ts     AWS SSM port-forward (spawns the AWS CLI) for bastion-only databases
   preload/
     index.ts      contextBridge → window.api (the only renderer↔main surface)
   renderer/

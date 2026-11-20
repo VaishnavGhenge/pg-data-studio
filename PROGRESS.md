@@ -121,6 +121,18 @@ v0.1.0 shipped as the initial commit. Since then, four features have merged to
   and columns got the same static full-text tooltip TableRow/SourceRow
   already had.
 
+
+### AWS SSM bastion tunnels
+- Sources can connect through an AWS Session Manager port-forward
+  (`src/main/tunnel.ts`): the main process spawns `aws ssm start-session` on a
+  free local port, waits for it to accept connections, and points the pool at
+  it. Connect, test and disconnect open and close the tunnel with the pool.
+- The CLI runs in its own process group and is closed by signalling the group:
+  killing only `aws` left `session-manager-plugin` orphaned and still
+  forwarding.
+- CLI failures (plugin missing, `aws` missing, AccessDenied, unknown profile,
+  expired credentials) are turned into readable connect errors.
+
 ## TODO
 
 Next up (rough priority):
@@ -145,7 +157,9 @@ Next up (rough priority):
 - Complex types (jsonb, arrays) round-trip as text — fine for scalars, rough for
   nested values.
 - SSL is a single checkbox (`sslmode=require`, `rejectUnauthorized: false`); no
-  cert options or SSH tunnel.
+  cert options. Tunnels are AWS SSM port-forwards only; there is no plain SSH
+  tunnel. If the SSM session drops mid-use, queries fail with a connection
+  error until you reconnect.
 - Passwords are stored in plaintext in the app's user-data dir (documented trust
   model — same as a local `.env`).
 
