@@ -136,6 +136,8 @@ interface Api {
   saveSource(source: Source): Promise<IpcResult<Source>>;
   deleteSource(id: string): Promise<IpcResult<boolean>>;
   beep(): Promise<IpcResult<boolean>>;
+  /** Fires when connections.json changes on disk; returns an unsubscribe. */
+  onSourcesChanged(callback: () => void): () => void;
 }
 
 interface Window {

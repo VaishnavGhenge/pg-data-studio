@@ -53,6 +53,9 @@ form (host/port/user/password/database/SSL) that stays in sync with a raw
 remembered for next time (stored in plaintext in the app's user-data dir — same
 trust model as a local `.env`).
 
+The sidebar reloads when that file changes, so a connection edited by hand or
+by a script is picked up without restarting the app.
+
 ### Databases behind an AWS bastion
 
 For a database only reachable from inside a VPC (a private RDS instance, say),

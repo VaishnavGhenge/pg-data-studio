@@ -115,6 +115,26 @@ export function listSources(): Source[] {
   return load().sources;
 }
 
+export function getSource(id: string): Source | null {
+  return load().sources.find((s) => s.id === id) ?? null;
+}
+
+// Saves replace the file by rename, so a watcher on the file itself would stay
+// on the old inode. Watch the directory and filter for our file instead.
+export function watchSources(onChange: () => void, delayMs = 150): () => void {
+  fs.mkdirSync(path.dirname(FILE), { recursive: true });
+  let timer: NodeJS.Timeout | null = null;
+  const watcher = fs.watch(path.dirname(FILE), (_event, name) => {
+    if (name && String(name) !== path.basename(FILE)) return;
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(onChange, delayMs);
+  });
+  return () => {
+    if (timer) clearTimeout(timer);
+    watcher.close();
+  };
+}
+
 // Upsert by id; a source without an id is treated as new and assigned one.
 export function saveSource(input: Source): Source {
   const data = load();

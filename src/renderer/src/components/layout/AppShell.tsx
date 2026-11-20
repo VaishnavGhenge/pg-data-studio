@@ -62,6 +62,15 @@ export function AppShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Optional call: the test and performance harnesses stub window.api without it.
+  useEffect(
+    () =>
+      window.api.onSourcesChanged?.(() => {
+        refreshSources().catch(() => {});
+      }),
+    [refreshSources],
+  );
+
   useEffect(() => {
     setFavorites(readPreference("favorites:" + connectedId, []));
     if (connectedId) {
