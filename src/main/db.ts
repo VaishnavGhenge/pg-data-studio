@@ -4,8 +4,10 @@
 // live catalog before it's quoted into a statement (injection-safe by design).
 
 import { Pool } from "pg";
+import { openTunnel, type Tunnel } from "./tunnel";
 
 let pool: Pool | null = null;
+let tunnel: Tunnel | null = null;
 let connectionVersion = 0;
 let meta: DbMeta = { database: null, serverVersion: null, host: null };
 
@@ -18,10 +20,10 @@ function requirePool(): Pool {
   return pool;
 }
 
-function poolConfig(cfg: ConnectConfig, max: number) {
+function poolConfig(cfg: ConnectConfig, max: number, via: Tunnel | null) {
   return {
-    host: cfg.host,
-    port: Number(cfg.port) || 5432,
+    host: via ? "127.0.0.1" : cfg.host,
+    port: via ? via.localPort : Number(cfg.port) || 5432,
     database: cfg.database,
     user: cfg.user,
     password: cfg.password,
@@ -50,44 +52,56 @@ async function probe(p: Pool): Promise<DbMeta> {
   }
 }
 
+function openTunnelFor(cfg: ConnectConfig & { tunnel: SsmTunnel }): Promise<Tunnel> {
+  return openTunnel(cfg.tunnel, cfg.host, Number(cfg.port) || 5432);
+}
+
+// Ending the pool first lets in-flight queries finish before the forward dies.
+async function release(p: Pool | null, t: Tunnel | null): Promise<void> {
+  if (p) await p.end().catch(() => {});
+  t?.close();
+}
+
 export async function connect(cfg: ConnectConfig): Promise<DbMeta> {
   const version = ++connectionVersion;
-  const p = new Pool(poolConfig(cfg, 5));
+  const t = cfg.tunnel ? await openTunnelFor({ ...cfg, tunnel: cfg.tunnel }) : null;
+  const p = new Pool(poolConfig(cfg, 5, t));
   let nextMeta: DbMeta;
   try {
     nextMeta = await probe(p);
     if (version !== connectionVersion) throw new Error("Connection attempt superseded.");
   } catch (e) {
-    await p.end().catch(() => {}); // don't leak the pool on a failed connect
+    await release(p, t); // don't leak the pool or the tunnel on a failed connect
     throw e;
   }
-  const previous = pool;
+  const previous = { pool, tunnel };
   pool = p;
+  tunnel = t;
   meta = nextMeta;
   // Drain old work without delaying publication of the new connection.
-  if (previous) void previous.end().catch(() => {});
+  void release(previous.pool, previous.tunnel);
   return { ...meta };
 }
 
 // Validate a config without touching the active connection: spin up a throwaway
 // single-client pool, probe it, and tear it down.
 export async function testConnect(cfg: ConnectConfig): Promise<DbMeta> {
-  const p = new Pool(poolConfig(cfg, 1));
+  const t = cfg.tunnel ? await openTunnelFor({ ...cfg, tunnel: cfg.tunnel }) : null;
+  const p = new Pool(poolConfig(cfg, 1, t));
   try {
     return await probe(p);
   } finally {
-    await p.end().catch(() => {});
+    await release(p, t);
   }
 }
 
 export async function disconnect(): Promise<void> {
   ++connectionVersion;
   meta = { database: null, serverVersion: null, host: null };
-  if (pool) {
-    const p = pool;
-    pool = null;
-    await p.end().catch(() => {});
-  }
+  const previous = { pool, tunnel };
+  pool = null;
+  tunnel = null;
+  await release(previous.pool, previous.tunnel);
 }
 
 export async function listTables(): Promise<TableInfo[]> {

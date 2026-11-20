@@ -19,6 +19,10 @@ interface FormFields {
   password: string;
   database: string;
   ssl: boolean;
+  useTunnel: boolean;
+  tunnelTarget: string;
+  tunnelProfile: string;
+  tunnelRegion: string;
 }
 
 function fieldsFromSource(s: Source | null): FormFields {
@@ -30,6 +34,10 @@ function fieldsFromSource(s: Source | null): FormFields {
     password: s?.password ?? "",
     database: s?.database ?? "",
     ssl: s?.ssl ?? false,
+    useTunnel: !!s?.tunnel,
+    tunnelTarget: s?.tunnel?.target ?? "",
+    tunnelProfile: s?.tunnel?.profile ?? "",
+    tunnelRegion: s?.tunnel?.region ?? "eu-west-1",
   };
 }
 
@@ -79,6 +87,8 @@ function validate(f: FormFields): string | null {
   if (!f.host.trim()) return "Host is required.";
   if (!f.database.trim()) return "Database is required.";
   if (!f.user.trim()) return "User is required.";
+  if (f.useTunnel && !f.tunnelTarget.trim()) return "Bastion instance id is required.";
+  if (f.useTunnel && !f.tunnelRegion.trim()) return "AWS region is required.";
   return null;
 }
 
@@ -96,6 +106,13 @@ function buildSourceForSubmit(id: string | null, f: FormFields): Source {
     user: f.user.trim(),
     password: f.password,
     ssl: f.ssl,
+    tunnel: f.useTunnel
+      ? {
+          target: f.tunnelTarget.trim(),
+          profile: f.tunnelProfile.trim(),
+          region: f.tunnelRegion.trim(),
+        }
+      : null,
   };
   if (!s.name) s.name = defaultName(f);
   return s;
@@ -342,6 +359,69 @@ function SourceModalForm({
           />{" "}
           <span>Use SSL</span>
         </label>
+
+        <label className="checkbox-row">
+          <input
+            type="checkbox"
+            checked={fields.useTunnel}
+            onChange={(e) => setField("useTunnel", e.target.checked)}
+          />{" "}
+          <span>Connect through an AWS SSM bastion</span>
+        </label>
+
+        {fields.useTunnel && (
+          <>
+            <label className="field-label" htmlFor="srcTunnelTarget">
+              Bastion instance id
+            </label>
+            <input
+              className="field"
+              id="srcTunnelTarget"
+              spellCheck={false}
+              autoComplete="off"
+              placeholder="i-0123456789abcdef0"
+              value={fields.tunnelTarget}
+              onChange={(e) => setField("tunnelTarget", e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleConnect()}
+            />
+            <div className="form-row">
+              <div className="form-col grow">
+                <label className="field-label" htmlFor="srcTunnelProfile">
+                  AWS profile
+                </label>
+                <input
+                  className="field"
+                  id="srcTunnelProfile"
+                  spellCheck={false}
+                  autoComplete="off"
+                  placeholder="default"
+                  value={fields.tunnelProfile}
+                  onChange={(e) => setField("tunnelProfile", e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleConnect()}
+                />
+              </div>
+              <div className="form-col grow">
+                <label className="field-label" htmlFor="srcTunnelRegion">
+                  Region
+                </label>
+                <input
+                  className="field"
+                  id="srcTunnelRegion"
+                  spellCheck={false}
+                  autoComplete="off"
+                  placeholder="eu-west-1"
+                  value={fields.tunnelRegion}
+                  onChange={(e) => setField("tunnelRegion", e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleConnect()}
+                />
+              </div>
+            </div>
+            <p className="connect-note">
+              Host and port above are what the bastion connects to, such as a private RDS endpoint.
+              Uses the AWS CLI and its Session Manager plugin.
+            </p>
+          </>
+        )}
 
         <div className="url-divider">or paste a URL</div>
         <input

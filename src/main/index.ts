@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, session, shell } from "electron";
 import * as path from "path";
 import * as db from "./db";
 import * as store from "./store";
+import { closeAllTunnels } from "./tunnel";
 
 app.setName("PG Data Studio");
 
@@ -166,3 +167,7 @@ app.on("window-all-closed", () => {
 app.on("before-quit", async () => {
   await db.disconnect();
 });
+
+// before-quit isn't awaited, so the async disconnect above may not reach the
+// tunnel. Kill the AWS CLI children synchronously so none outlive the app.
+app.on("will-quit", closeAllTunnels);

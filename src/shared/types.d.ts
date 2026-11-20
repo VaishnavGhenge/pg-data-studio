@@ -28,6 +28,19 @@ interface DbMeta {
   host: string | null;
 }
 
+/**
+ * An AWS Session Manager port-forward through a bastion instance. When set,
+ * `host`/`port` are what the bastion dials (e.g. a private RDS endpoint), and
+ * the pool connects to a local port the AWS CLI forwards to it.
+ */
+interface SsmTunnel {
+  /** EC2 instance id of the bastion, e.g. i-00ea5db1a5097f6c3. */
+  target: string;
+  /** AWS CLI profile; empty uses the CLI's default credential chain. */
+  profile: string;
+  region: string;
+}
+
 /** The Postgres connection fields needed to open a pool. */
 interface ConnectConfig {
   host: string;
@@ -36,6 +49,7 @@ interface ConnectConfig {
   user: string;
   password: string;
   ssl: boolean;
+  tunnel?: SsmTunnel | null;
 }
 
 /** A saved data source: a named ConnectConfig with a stable id. */
