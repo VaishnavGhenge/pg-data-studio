@@ -22,6 +22,11 @@ const api: Api = {
   saveSource: (source) => invoke<Source>("store:save", source),
   deleteSource: (id) => invoke<boolean>("store:delete", id),
   beep: () => invoke<boolean>("app:beep"),
+  onSourcesChanged: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on("sources:changed", listener);
+    return () => ipcRenderer.removeListener("sources:changed", listener);
+  },
 };
 
 contextBridge.exposeInMainWorld("api", api);

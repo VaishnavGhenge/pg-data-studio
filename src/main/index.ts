@@ -7,6 +7,7 @@ import { closeAllTunnels } from "./tunnel";
 app.setName("PG Data Studio");
 
 let mainWindow: BrowserWindow | null = null;
+let stopWatchingSources: (() => void) | null = null;
 
 // The renderer has no inline scripts/eval and loads nothing external — CSP is
 // set here rather than a static <meta> tag so it can be strict in production
@@ -88,7 +89,20 @@ function handle<T>(channel: string, fn: (...args: any[]) => Promise<T>): void {
   });
 }
 
-handle<DbMeta>("db:connect", async (cfg: ConnectConfig) => db.connect(cfg));
+// A saved source connects with what's on disk, not the renderer's copy, which
+// can be stale if connections.json was edited outside the app. An unreadable
+// file shouldn't block connecting, so fall back to what the renderer sent.
+function latestConfig(cfg: ConnectConfig & { id?: string }): ConnectConfig {
+  try {
+    return (cfg.id && store.getSource(cfg.id)) || cfg;
+  } catch {
+    return cfg;
+  }
+}
+
+handle<DbMeta>("db:connect", async (cfg: ConnectConfig & { id?: string }) =>
+  db.connect(latestConfig(cfg)),
+);
 
 handle<DbMeta>("db:test", async (cfg: ConnectConfig) => db.testConnect(cfg));
 
@@ -154,6 +168,7 @@ if (!gotLock) {
   app.whenReady().then(() => {
     installCsp();
     createWindow();
+    stopWatchingSources = store.watchSources(() => mainWindow?.webContents.send("sources:changed"));
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
@@ -170,4 +185,7 @@ app.on("before-quit", async () => {
 
 // before-quit isn't awaited, so the async disconnect above may not reach the
 // tunnel. Kill the AWS CLI children synchronously so none outlive the app.
-app.on("will-quit", closeAllTunnels);
+app.on("will-quit", () => {
+  closeAllTunnels();
+  stopWatchingSources?.();
+});

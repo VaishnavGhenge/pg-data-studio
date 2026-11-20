@@ -133,6 +133,16 @@ v0.1.0 shipped as the initial commit. Since then, four features have merged to
 - CLI failures (plugin missing, `aws` missing, AccessDenied, unknown profile,
   expired credentials) are turned into readable connect errors.
 
+
+### Saved connections follow the file
+- Connecting to a saved source reads it by id from `connections.json` in the
+  main process instead of trusting the renderer's copy, so an edit made outside
+  the app is used on the next connect. Test still uses the form's unsaved
+  values.
+- The main process watches the user-data directory (saves replace the file by
+  rename, so a watcher on the file would go stale), debounces, and tells the
+  renderer to reload the sidebar list.
+
 ## TODO
 
 Next up (rough priority):
