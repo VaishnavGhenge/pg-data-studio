@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, session, shell } from "electron";
 import * as path from "path";
 import * as db from "./db";
 import * as store from "./store";
@@ -8,6 +8,7 @@ app.setName("PG Data Studio");
 
 let mainWindow: BrowserWindow | null = null;
 let stopWatchingSources: (() => void) | null = null;
+let activeSaves = 0;
 
 // The renderer has no inline scripts/eval and loads nothing external — CSP is
 // set here rather than a static <meta> tag so it can be strict in production
@@ -56,8 +57,29 @@ function createWindow(): void {
     return { action: "deny" };
   });
 
-  mainWindow.on("closed", () => {
+  const window = mainWindow;
+  window.webContents.on("will-prevent-unload", (event) => {
+    if (activeSaves > 0) {
+      dialog.showMessageBoxSync(window, {
+        type: "info",
+        message: "Changes are still saving",
+        detail: "Wait for the save to finish before closing the window.",
+      });
+      return;
+    }
+    const choice = dialog.showMessageBoxSync(window, {
+      type: "warning",
+      message: "Discard unsaved changes?",
+      detail: "Pending edits in open tables will be lost.",
+      buttons: ["Keep editing", "Discard changes"],
+      defaultId: 0,
+      cancelId: 0,
+    });
+    if (choice === 1) event.preventDefault(); // Allow Electron to unload the page.
+  });
+  window.on("closed", () => {
     mainWindow = null;
+    void db.disconnect();
   });
 }
 
@@ -89,22 +111,11 @@ function handle<T>(channel: string, fn: (...args: any[]) => Promise<T>): void {
   });
 }
 
-// A saved source connects with what's on disk, not the renderer's copy, which
-// can be stale if connections.json was edited outside the app. An unreadable
-// file shouldn't block connecting, so fall back to what the renderer sent.
-function latestConfig(cfg: ConnectConfig & { id?: string }): ConnectConfig {
-  try {
-    return (cfg.id && store.getSource(cfg.id)) || cfg;
-  } catch {
-    return cfg;
-  }
-}
+handle<DbMeta>("db:connect", async (id: string) => db.connect(() => store.connectionConfig(id)));
 
-handle<DbMeta>("db:connect", async (cfg: ConnectConfig & { id?: string }) =>
-  db.connect(latestConfig(cfg)),
+handle<DbMeta>("db:test", async (cfg: SourceInput) =>
+  db.testConnect(await store.testConnectionConfig(cfg)),
 );
-
-handle<DbMeta>("db:test", async (cfg: ConnectConfig) => db.testConnect(cfg));
 
 handle<boolean>("db:disconnect", async () => {
   await db.disconnect();
@@ -132,14 +143,21 @@ handle<string>("db:countRows", async (schema: string, table: string, opts: Query
 
 handle<ApplyResult>(
   "db:applyChanges",
-  async (schema: string, table: string, changes: RowChange[]) =>
-    db.applyChanges(schema, table, changes),
+  async (schema: string, table: string, changes: RowChange[]) => {
+    activeSaves++;
+    try {
+      return await db.applyChanges(schema, table, changes);
+    } finally {
+      activeSaves--;
+    }
+  },
 );
 
 handle<Source[]>("store:list", async () => store.listSources());
-handle<Source>("store:save", async (source: Source) => store.saveSource(source));
+handle<Source>("store:save", async (source: SourceInput) => store.saveSource(source));
+handle<Source>("store:duplicate", async (id: string) => store.duplicateSource(id));
 handle<boolean>("store:delete", async (id: string) => {
-  store.deleteSource(id);
+  await store.deleteSource(id);
   return true;
 });
 
@@ -179,12 +197,8 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-app.on("before-quit", async () => {
-  await db.disconnect();
-});
-
-// before-quit isn't awaited, so the async disconnect above may not reach the
-// tunnel. Kill the AWS CLI children synchronously so none outlive the app.
+// A cancelled quit keeps the window and connection alive. Once all windows
+// close, stop any tunnel that is still draining or opening.
 app.on("will-quit", () => {
   closeAllTunnels();
   stopWatchingSources?.();

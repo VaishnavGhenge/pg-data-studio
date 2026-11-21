@@ -31,6 +31,7 @@ export function InlineCellEditor({
       ref={ref}
       className="cell cell-input"
       aria-label="Edit cell value"
+      data-pending-edit={text !== (value ?? "") ? "" : undefined}
       value={text}
       onChange={(e) => {
         touched.current = true;

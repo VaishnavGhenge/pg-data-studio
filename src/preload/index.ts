@@ -7,7 +7,7 @@ const invoke = <T>(channel: string, ...args: unknown[]): Promise<IpcResult<T>> =
   ipcRenderer.invoke(channel, ...args);
 
 const api: Api = {
-  connect: (cfg) => invoke<DbMeta>("db:connect", cfg),
+  connect: (id) => invoke<DbMeta>("db:connect", id),
   testConnection: (cfg) => invoke<DbMeta>("db:test", cfg),
   disconnect: () => invoke<boolean>("db:disconnect"),
   status: () => invoke<DbStatus>("db:status"),
@@ -20,6 +20,7 @@ const api: Api = {
     invoke<ApplyResult>("db:applyChanges", schema, table, changes),
   listSources: () => invoke<Source[]>("store:list"),
   saveSource: (source) => invoke<Source>("store:save", source),
+  duplicateSource: (id) => invoke<Source>("store:duplicate", id),
   deleteSource: (id) => invoke<boolean>("store:delete", id),
   beep: () => invoke<boolean>("app:beep"),
   onSourcesChanged: (callback) => {

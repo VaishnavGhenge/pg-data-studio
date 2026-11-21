@@ -1,33 +1,36 @@
-// Persistence for saved data sources, stored as JSON in the OS user-data dir.
-// Passwords are saved in plaintext — this is a local developer tool, the same
-// trust model as a .pgpass or a .env file on your machine.
+// Saved connection metadata and OS-encrypted passwords share one atomic file.
 
-import { app } from "electron";
+import { app, safeStorage } from "electron";
 import * as fs from "fs";
 import * as path from "path";
 import { randomUUID } from "crypto";
 
-interface StoreData {
-  sources: Source[];
+interface StoredSource extends SourceInput {
+  encryptedPassword?: string;
 }
 
 const FILE = path.join(app.getPath("userData"), "connections.json");
+let pendingWrite = Promise.resolve();
 
-function readRaw(): Record<string, unknown> {
+function readFile(): string | null {
   try {
-    const parsed = JSON.parse(fs.readFileSync(FILE, "utf8"));
-    return parsed && typeof parsed === "object" ? parsed : {};
+    return fs.readFileSync(FILE, "utf8");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
   }
 }
 
-function write(data: StoreData): void {
+function write(sources: StoredSource[], previous: string | null): void {
+  if (readFile() !== previous) {
+    throw new Error(
+      "Saved connections changed on disk. Try again with the latest connection settings.",
+    );
+  }
   fs.mkdirSync(path.dirname(FILE), { recursive: true });
   const temp = `${FILE}.${randomUUID()}.tmp`;
   try {
-    fs.writeFileSync(temp, JSON.stringify(data, null, 2), {
+    fs.writeFileSync(temp, JSON.stringify({ sources }, null, 2), {
       encoding: "utf8",
       mode: 0o600,
       flag: "wx",
@@ -54,7 +57,7 @@ function normalizeTunnel(t: unknown): SsmTunnel | null {
   };
 }
 
-function withValidTunnel(s: Source): Source {
+function withValidTunnel(s: StoredSource): StoredSource {
   if (s.tunnel === undefined) return s;
   const tunnel = normalizeTunnel(s.tunnel);
   if (tunnel) return { ...s, tunnel };
@@ -62,8 +65,8 @@ function withValidTunnel(s: Source): Source {
   return rest;
 }
 
-function isSource(s: unknown): s is Source {
-  const o = s as Source;
+function isSource(s: unknown): s is StoredSource {
+  const o = s as StoredSource;
   return (
     !!o &&
     typeof o.id === "string" &&
@@ -75,7 +78,7 @@ function isSource(s: unknown): s is Source {
 
 // Parse a postgres:// connection string into a Source (best effort). Exported so
 // the legacy migration and any future importer share one parser.
-export function sourceFromUrl(cs: string): Source | null {
+export function sourceFromUrl(cs: string): SourceInput | null {
   try {
     const u = new URL(cs.trim());
     if (!/^postgres(ql)?:$/.test(u.protocol)) return null;
@@ -97,26 +100,108 @@ export function sourceFromUrl(cs: string): Source | null {
   }
 }
 
-// Read stored sources, migrating the pre-0.2 `recent: string[]` format the first
-// time it's seen.
-function load(): StoreData {
-  const raw = readRaw();
-  if (Array.isArray(raw.sources)) {
-    return { sources: raw.sources.filter(isSource).map(withValidTunnel) };
+function load(): { sources: StoredSource[]; previous: string | null; legacy: boolean } {
+  const previous = readFile();
+  const raw = previous === null ? {} : JSON.parse(previous);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("Saved connections file must contain a JSON object.");
   }
-  const recent = Array.isArray(raw.recent) ? (raw.recent as string[]) : [];
-  const sources = recent.map(sourceFromUrl).filter((s): s is Source => s !== null);
-  const data: StoreData = { sources };
-  if (recent.length) write(data); // persist the migration once
-  return data;
+  if (Array.isArray(raw.sources)) {
+    const sources = raw.sources.filter(isSource).map(withValidTunnel);
+    return {
+      previous,
+      sources,
+      legacy: sources.some((s: StoredSource) => Object.hasOwn(s, "password")),
+    };
+  }
+  const recent = Array.isArray(raw.recent) ? raw.recent : [];
+  const sources = recent
+    .filter((url: unknown): url is string => typeof url === "string")
+    .map(sourceFromUrl)
+    .filter((source: SourceInput | null): source is SourceInput => source !== null);
+  return { previous, sources, legacy: recent.length > 0 };
 }
 
-export function listSources(): Source[] {
-  return load().sources;
+async function requireSecureStorage(): Promise<void> {
+  const available = await safeStorage.isAsyncEncryptionAvailable();
+  const backend = process.platform === "linux" ? safeStorage.getSelectedStorageBackend() : null;
+  if (!available || backend === "basic_text" || backend === "unknown") {
+    throw new Error(
+      "Secure password storage is unavailable. Unlock your OS credential store and try again.",
+    );
+  }
 }
 
-export function getSource(id: string): Source | null {
-  return load().sources.find((s) => s.id === id) ?? null;
+async function encrypt(sources: StoredSource[]): Promise<StoredSource[]> {
+  const protectedSources: StoredSource[] = [];
+  for (const { password, ...source } of sources) {
+    if (password) {
+      await requireSecureStorage();
+      source.encryptedPassword = (await safeStorage.encryptStringAsync(password)).toString(
+        "base64",
+      );
+    }
+    protectedSources.push(source);
+  }
+  return protectedSources;
+}
+
+function changeStore<T>(change: () => Promise<T>): Promise<T> {
+  const result = pendingWrite.then(change);
+  pendingWrite = result.then(
+    () => {},
+    () => {},
+  );
+  return result;
+}
+
+function metadata({ password, encryptedPassword, ...source }: StoredSource): Source {
+  return password || encryptedPassword ? { ...source, hasSavedPassword: true } : source;
+}
+
+export function listSources(): Promise<Source[]> {
+  return changeStore(async () => {
+    const sources = await migrate();
+    return sources.map(metadata);
+  });
+}
+
+async function migrate(): Promise<StoredSource[]> {
+  const { sources, previous, legacy } = load();
+  if (!legacy) return sources;
+  const secured = await encrypt(sources);
+  write(secured, previous);
+  return secured;
+}
+
+function requireSource(sources: StoredSource[], id: string): StoredSource {
+  const source = sources.find((s) => s.id === id);
+  if (!source)
+    throw new Error(
+      "That saved connection no longer exists. Refresh your connections and try again.",
+    );
+  return source;
+}
+
+async function savedPassword({ encryptedPassword }: StoredSource): Promise<string> {
+  if (!encryptedPassword) return "";
+  await requireSecureStorage();
+  const decrypted = await safeStorage.decryptStringAsync(Buffer.from(encryptedPassword, "base64"));
+  return decrypted.result;
+}
+
+export function connectionConfig(id: string): Promise<ConnectConfig> {
+  return changeStore(async () => {
+    const source = requireSource(await migrate(), id);
+    return { ...metadata(source), password: await savedPassword(source) };
+  });
+}
+
+export async function testConnectionConfig(input: SourceInput): Promise<ConnectConfig> {
+  const { password, id, ...config } = input;
+  if (password !== undefined || !id) return { ...config, password: password ?? "" };
+  const saved = await connectionConfig(id);
+  return { ...config, password: saved.password };
 }
 
 // Saves replace the file by rename, so a watcher on the file itself would stay
@@ -136,18 +221,42 @@ export function watchSources(onChange: () => void, delayMs = 150): () => void {
 }
 
 // Upsert by id; a source without an id is treated as new and assigned one.
-export function saveSource(input: Source): Source {
-  const data = load();
-  const source: Source = { ...input, id: input.id || randomUUID() };
-  const idx = data.sources.findIndex((s) => s.id === source.id);
-  if (idx >= 0) data.sources[idx] = source;
-  else data.sources.push(source);
-  write(data);
-  return source;
+export function saveSource(input: SourceInput): Promise<Source> {
+  return changeStore(async () => {
+    const { sources, previous } = load();
+    const idx = sources.findIndex((s) => s.id === input.id);
+    const existing = idx >= 0 ? sources[idx] : undefined;
+    const { password, ...fields } = input;
+    const source: StoredSource = {
+      ...fields,
+      id: input.id || randomUUID(),
+      ...(password === undefined
+        ? { password: existing?.password, encryptedPassword: existing?.encryptedPassword }
+        : { password }),
+    };
+    if (existing) sources[idx] = source;
+    else sources.push(source);
+    const secured = await encrypt(sources);
+    write(secured, previous);
+    return metadata(requireSource(secured, source.id));
+  });
 }
 
-export function deleteSource(id: string): void {
-  const data = load();
-  data.sources = data.sources.filter((s) => s.id !== id);
-  write(data);
+export function duplicateSource(id: string): Promise<Source> {
+  return changeStore(async () => {
+    const { sources, previous } = load();
+    const source = requireSource(sources, id);
+    const copy = { ...source, id: randomUUID(), name: source.name + " (copy)" };
+    const secured = await encrypt([...sources, copy]);
+    write(secured, previous);
+    return metadata(requireSource(secured, copy.id));
+  });
+}
+
+export function deleteSource(id: string): Promise<void> {
+  return changeStore(async () => {
+    const { sources, previous } = load();
+    const secured = await encrypt(sources.filter((s) => s.id !== id));
+    write(secured, previous);
+  });
 }

@@ -4,6 +4,9 @@
 // live catalog before it's quoted into a statement (injection-safe by design).
 
 import { Pool } from "pg";
+import { isIP } from "node:net";
+import { checkServerIdentity } from "node:tls";
+import { quoteIdent, updateSql } from "../shared/updateSql";
 import { openTunnel, type Tunnel } from "./tunnel";
 
 let pool: Pool | null = null;
@@ -11,23 +14,30 @@ let tunnel: Tunnel | null = null;
 let connectionVersion = 0;
 let meta: DbMeta = { database: null, serverVersion: null, host: null };
 
-function quoteIdent(name: string): string {
-  return '"' + String(name).replace(/"/g, '""') + '"';
-}
-
 function requirePool(): Pool {
   if (!pool) throw new Error("Not connected to a database.");
   return pool;
 }
 
 function poolConfig(cfg: ConnectConfig, max: number, via: Tunnel | null) {
+  const host = cfg.host.replace(/^\[(.*)\]$/, "$1");
   return {
-    host: via ? "127.0.0.1" : cfg.host,
+    host: via ? "127.0.0.1" : host,
     port: via ? via.localPort : Number(cfg.port) || 5432,
     database: cfg.database,
     user: cfg.user,
     password: cfg.password,
-    ssl: cfg.ssl ? { rejectUnauthorized: false } : undefined,
+    ssl: cfg.ssl
+      ? {
+          rejectUnauthorized: true,
+          ca: cfg.sslCa?.trim() || undefined,
+          servername: isIP(host) ? undefined : host,
+          checkServerIdentity: (
+            _name: string,
+            certificate: Parameters<typeof checkServerIdentity>[1],
+          ) => checkServerIdentity(host, certificate),
+        }
+      : false,
     max,
     connectionTimeoutMillis: 8000,
     idleTimeoutMillis: 30000,
@@ -62,8 +72,12 @@ async function release(p: Pool | null, t: Tunnel | null): Promise<void> {
   t?.close();
 }
 
-export async function connect(cfg: ConnectConfig): Promise<DbMeta> {
+export async function connect(
+  config: ConnectConfig | (() => Promise<ConnectConfig>),
+): Promise<DbMeta> {
   const version = ++connectionVersion;
+  const cfg = typeof config === "function" ? await config() : config;
+  if (version !== connectionVersion) throw new Error("Connection attempt superseded.");
   const t = cfg.tunnel ? await openTunnelFor({ ...cfg, tunnel: cfg.tunnel }) : null;
   const p = new Pool(poolConfig(cfg, 5, t));
   let nextMeta: DbMeta;
@@ -231,11 +245,7 @@ export async function runQuery(
   // string or null so the sandboxed renderer never reasons about pg's JS types.
   const colNames = r.fields.map((f) => f.name);
   const rows = pageArrs.map((arr) => {
-    const obj: Record<string, Cell> = {};
-    colNames.forEach((name, i) => {
-      obj[name] = serializeCell(arr[i]);
-    });
-    return obj;
+    return Object.fromEntries(colNames.map((name, i) => [name, serializeCell(arr[i])]));
   });
 
   // Human-readable WHERE for the preview bar: filters rendered with literal
@@ -355,8 +365,7 @@ function serializeCell(v: unknown): Cell {
   return String(v);
 }
 
-// Apply a batch of edits in a single transaction. Each change matches one row by
-// its primary key and applies the SET map.
+// Apply the entire batch or roll it back if a row no longer matches its original values.
 export async function applyChanges(
   schema: string,
   table: string,
@@ -371,8 +380,6 @@ export async function applyChanges(
   }
   const valid = new Set(columns.map((c) => c.name));
   const pkSet = new Set(pk);
-  const ref = `${quoteIdent(schema)}.${quoteIdent(table)}`;
-
   const client = await p.connect();
   const statements: string[] = [];
   let updated = 0;
@@ -381,33 +388,43 @@ export async function applyChanges(
     await client.query("begin");
 
     for (const change of changes) {
-      const setCols = Object.keys(change.set).filter((c) => valid.has(c) && !pkSet.has(c));
+      const setCols = Object.keys(change.set);
       if (setCols.length === 0) continue;
 
       for (const k of pk) {
-        if (!(k in change.pk)) {
+        if (!Object.hasOwn(change.pk, k) || typeof change.pk[k] !== "string") {
           throw new Error(`Missing primary key value for "${k}".`);
         }
       }
 
-      const setClause = setCols.map((c, i) => `${quoteIdent(c)} = $${i + 1}`).join(", ");
-      const whereClause = pk
-        .map((c, i) => `${quoteIdent(c)} = $${setCols.length + i + 1}`)
-        .join(" and ");
+      for (const c of setCols) {
+        if (!valid.has(c) || pkSet.has(c)) throw new Error(`Column "${c}" cannot be edited.`);
+        if (
+          !change.original ||
+          !Object.hasOwn(change.original, c) ||
+          (change.original[c] !== null && typeof change.original[c] !== "string")
+        ) {
+          throw new Error(`Missing original value for "${c}".`);
+        }
+      }
 
-      const params: Cell[] = [...setCols.map((c) => change.set[c]), ...pk.map((c) => change.pk[c])];
-      const sql = `update ${ref} set ${setClause} where ${whereClause}`;
-
+      const params: Cell[] = [];
+      const sql = updateSql(
+        schema,
+        table,
+        setCols,
+        pk,
+        change,
+        (value) => `$${params.push(value)}`,
+      );
       const res = await client.query(sql, params);
-      if (res.rowCount === 0) {
+      if (res.rowCount !== 1) {
         throw new Error(
-          `No row matched ${pk
-            .map((c) => `${c}=${change.pk[c]}`)
-            .join(", ")} — it may have been deleted or changed by someone else.`,
+          `Could not save row (${pk.map((c) => `${c}=${change.pk[c]}`).join(", ")}). It may have changed or been deleted. The batch was rolled back. Copy any edits you want to keep, then refresh and review the latest values.`,
         );
       }
-      updated += res.rowCount ?? 0;
-      statements.push(renderStatement(schema, table, setCols, change, pk));
+      updated += 1;
+      statements.push(updateSql(schema, table, setCols, pk, change, literal));
     }
 
     await client.query("commit");
@@ -424,19 +441,6 @@ export async function applyChanges(
 function literal(v: Cell): string {
   if (v === null || v === undefined) return "NULL";
   return "'" + String(v).replace(/'/g, "''") + "'";
-}
-
-function renderStatement(
-  schema: string,
-  table: string,
-  setCols: string[],
-  change: RowChange,
-  pk: string[],
-): string {
-  const ref = `${quoteIdent(schema)}.${quoteIdent(table)}`;
-  const sets = setCols.map((c) => `${quoteIdent(c)} = ${literal(change.set[c])}`).join(", ");
-  const where = pk.map((c) => `${quoteIdent(c)} = ${literal(change.pk[c])}`).join(" AND ");
-  return `UPDATE ${ref} SET ${sets} WHERE ${where};`;
 }
 
 export function isConnected(): boolean {

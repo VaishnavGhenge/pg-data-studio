@@ -3,7 +3,12 @@
 
 import { useCallback } from "react";
 import { useSourcesDispatch, useSourcesState } from "../state/sourcesStore";
-import { useTableDispatch, useTableState, useWorkspaceRequests } from "../state/tableStore";
+import {
+  hasPendingEdits,
+  useTableDispatch,
+  useTableState,
+  useWorkspaceRequests,
+} from "../state/tableStore";
 import { useConfirm, useConfirmDiscard } from "../state/confirmStore";
 import { useToast } from "../state/toastStore";
 import { unwrap } from "./useApi";
@@ -13,14 +18,7 @@ export function useSourceActions() {
   const { sources, connectedId } = useSourcesState();
   const tableDispatch = useTableDispatch();
   const tableState = useTableState();
-  const { dirty } = tableState;
-  const hasEdits =
-    Object.keys(dirty).length > 0 ||
-    Object.entries(tableState.snapshots).some(
-      ([id, tab]) =>
-        id !== JSON.stringify([tableState.current?.schema, tableState.current?.name]) &&
-        Object.keys(tab.dirty).length > 0,
-    );
+  const hasEdits = hasPendingEdits(tableState);
   const confirmDiscard = useConfirmDiscard();
   const confirm = useConfirm();
   const { show: toast } = useToast();
@@ -40,7 +38,7 @@ export function useSourceActions() {
       if (!requests.isCurrent(version) || !requests.lock()) return false;
       sourcesDispatch({ type: "CONNECT_START", id: src.id });
       try {
-        const meta = await unwrap(window.api.connect(src));
+        const meta = await unwrap(window.api.connect(src.id));
         sourcesDispatch({ type: "CONNECT_SUCCESS", id: src.id, meta });
         tableDispatch({ type: "CLEAR_WORKSPACE" });
         return true;
@@ -79,7 +77,7 @@ export function useSourceActions() {
   // Upsert; throws on failure so a caller with an inline error area (the
   // source modal) can show it there instead of a global toast.
   const saveSource = useCallback(
-    async (s: Source): Promise<Source> => {
+    async (s: SourceInput): Promise<Source> => {
       const saved = await unwrap(window.api.saveSource(s));
       await refreshSources();
       return saved;
@@ -114,13 +112,14 @@ export function useSourceActions() {
       const src = sources.find((s) => s.id === id);
       if (!src) return;
       try {
-        await saveSource({ ...src, id: "", name: src.name + " (copy)" });
+        await unwrap(window.api.duplicateSource(id));
+        await refreshSources();
         toast("Duplicated");
       } catch (e) {
         toast(e instanceof Error ? e.message : String(e), true);
       }
     },
-    [sources, saveSource, toast],
+    [sources, refreshSources, toast],
   );
 
   return { refreshSources, connect, disconnect, saveSource, deleteSource, duplicateSource };

@@ -34,7 +34,11 @@ export function ValueInspector({
     }
   }
   return (
-    <aside className="value-inspector" aria-label="Value inspector">
+    <aside
+      className="value-inspector"
+      aria-label="Value inspector"
+      data-pending-edit={editable && (isNull ? null : text) !== value ? "" : undefined}
+    >
       <div className="inspector-head">
         <strong>{column.name}</strong>
         <button

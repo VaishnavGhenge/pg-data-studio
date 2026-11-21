@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Sidebar } from "../navigator/Sidebar";
 import { SourceModal } from "../navigator/SourceModal";
 import { Splitter } from "./Splitter";
@@ -6,7 +6,7 @@ import { TableView } from "../grid/TableView";
 import { useSplitterWidth } from "../../hooks/useSplitterWidth";
 import { useSourcesState } from "../../state/sourcesStore";
 import { useSourceActions } from "../../hooks/useSourceActions";
-import { useTableState } from "../../state/tableStore";
+import { hasPendingEdits, useTableState } from "../../state/tableStore";
 import { useTableActions } from "../../hooks/useTableActions";
 import { useToast } from "../../state/toastStore";
 import { readPreference, writePreference, tableId } from "../../lib/preferences";
@@ -21,6 +21,7 @@ export function AppShell() {
   const { refreshSources } = useSourceActions();
   const state = useTableState();
   const { current } = state;
+  const hasEdits = hasPendingEdits(state);
   const { openTable, closeTab } = useTableActions();
   const [favorites, setFavorites] = useState<{ schema: string; name: string }[]>([]);
   const { show: toast } = useToast();
@@ -31,6 +32,15 @@ export function AppShell() {
   const activeTabRef = useRef<HTMLDivElement | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
   const newSource = () => setSourceModal({ open: true, source: null });
+  useLayoutEffect(() => {
+    function beforeUnload(event: BeforeUnloadEvent) {
+      if (!hasEdits && !document.querySelector("[data-pending-edit]")) return;
+      event.preventDefault();
+      event.returnValue = false;
+    }
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => window.removeEventListener("beforeunload", beforeUnload);
+  }, [hasEdits]);
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if (

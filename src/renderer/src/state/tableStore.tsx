@@ -45,6 +45,16 @@ export interface TableState {
   snapshots: Record<string, Omit<TableState, "tabs" | "snapshots">>;
 }
 
+export function hasPendingEdits(state: TableState): boolean {
+  const current = state.current ? tableId(state.current.schema, state.current.name) : null;
+  return (
+    Object.keys(state.dirty).length > 0 ||
+    Object.entries(state.snapshots).some(
+      ([id, tab]) => id !== current && Object.keys(tab.dirty).length > 0,
+    )
+  );
+}
+
 const initialState: TableState = {
   current: null,
   columns: [],

@@ -16,9 +16,10 @@ interface FormFields {
   host: string;
   port: string;
   user: string;
-  password: string;
+  password?: string;
   database: string;
   ssl: boolean;
+  sslCa: string;
   useTunnel: boolean;
   tunnelTarget: string;
   tunnelProfile: string;
@@ -31,9 +32,10 @@ function fieldsFromSource(s: Source | null): FormFields {
     host: s?.host ?? "localhost",
     port: String(s?.port ?? 5432),
     user: s?.user ?? "postgres",
-    password: s?.password ?? "",
+    password: s?.hasSavedPassword ? undefined : "",
     database: s?.database ?? "",
     ssl: s?.ssl ?? false,
+    sslCa: s?.sslCa ?? "",
     useTunnel: !!s?.tunnel,
     tunnelTarget: s?.tunnel?.target ?? "",
     tunnelProfile: s?.tunnel?.profile ?? "",
@@ -46,7 +48,7 @@ function buildUrl(f: FormFields): string {
     ? encodeURIComponent(f.user) + (f.password ? ":" + encodeURIComponent(f.password) : "") + "@"
     : "";
   const port = f.port ? ":" + f.port : "";
-  const q = f.ssl ? "?sslmode=require" : "";
+  const q = f.ssl ? "?sslmode=verify-full" : "";
   return `postgres://${cred}${f.host}${port}/${encodeURIComponent(f.database)}${q}`;
 }
 
@@ -96,8 +98,8 @@ function defaultName(f: FormFields): string {
   return `${f.database.trim() || "postgres"} @ ${f.host.trim() || "localhost"}`;
 }
 
-function buildSourceForSubmit(id: string | null, f: FormFields): Source {
-  const s: Source = {
+function buildSourceForSubmit(id: string | null, f: FormFields): SourceInput {
+  const s: SourceInput = {
     id: id ?? "",
     name: f.name.trim(),
     host: f.host.trim(),
@@ -106,6 +108,7 @@ function buildSourceForSubmit(id: string | null, f: FormFields): Source {
     user: f.user.trim(),
     password: f.password,
     ssl: f.ssl,
+    sslCa: f.sslCa.trim() || undefined,
     tunnel: f.useTunnel
       ? {
           target: f.tunnelTarget.trim(),
@@ -229,7 +232,9 @@ function SourceModalForm({
     setTestResult(null);
     setTesting(true);
     try {
-      const meta = await unwrap(window.api.testConnection(buildSourceForSubmit(null, fields)));
+      const meta = await unwrap(
+        window.api.testConnection(buildSourceForSubmit(savedId.current, fields)),
+      );
       setTestResult({ text: meta.serverVersion ?? "connected", ok: true });
     } catch (e) {
       setTestResult({ text: e instanceof Error ? e.message : String(e), ok: false });
@@ -329,11 +334,23 @@ function SourceModalForm({
               id="srcPassword"
               type="password"
               autoComplete="off"
-              placeholder="••••••••"
-              value={fields.password}
-              onChange={(e) => setField("password", e.target.value)}
+              placeholder={fields.password === undefined ? "Saved password" : "••••••••"}
+              value={fields.password ?? ""}
+              onChange={(e) =>
+                setField("password", e.target.value || (source?.hasSavedPassword ? undefined : ""))
+              }
               onKeyDown={(e) => e.key === "Enter" && handleConnect()}
             />
+            {source?.hasSavedPassword && (
+              <button
+                type="button"
+                className="btn ghost"
+                disabled={busy}
+                onClick={() => setField("password", fields.password === "" ? undefined : "")}
+              >
+                {fields.password === "" ? "Keep saved password" : "Remove saved password"}
+              </button>
+            )}
           </div>
         </div>
 
@@ -357,8 +374,25 @@ function SourceModalForm({
             checked={fields.ssl}
             onChange={(e) => setField("ssl", e.target.checked)}
           />{" "}
-          <span>Use SSL</span>
+          <span>Use TLS and verify server identity</span>
         </label>
+
+        {fields.ssl && (
+          <>
+            <label className="field-label" htmlFor="srcSslCa">
+              Trusted CA certificate (optional)
+            </label>
+            <textarea
+              id="srcSslCa"
+              className="field"
+              rows={3}
+              spellCheck={false}
+              placeholder="Paste PEM for a private CA. Leave blank to use default trust roots."
+              value={fields.sslCa}
+              onChange={(e) => setField("sslCa", e.target.value)}
+            />
+          </>
+        )}
 
         <label className="checkbox-row">
           <input

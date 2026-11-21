@@ -1,8 +1,5 @@
 import { groupDirtyByRow, type DirtyEntry } from "./dirty";
-
-function quoteIdent(name: string): string {
-  return '"' + name.replace(/"/g, '""') + '"';
-}
+import { updateSql } from "../../../shared/updateSql";
 
 function literal(v: Cell): string {
   if (v === null || v === undefined) return "NULL";
@@ -19,12 +16,7 @@ export function buildUpdatePreview(
   schema: string,
   table: string,
 ): string[] {
-  const ref = `${quoteIdent(schema)}.${quoteIdent(table)}`;
-  return groupDirtyByRow(dirty).map((change) => {
-    const sets = Object.entries(change.set)
-      .map(([col, val]) => `${quoteIdent(col)} = ${literal(val)}`)
-      .join(", ");
-    const where = pk.map((c) => `${quoteIdent(c)} = ${literal(change.pk[c])}`).join(" AND ");
-    return `UPDATE ${ref} SET ${sets} WHERE ${where};`;
-  });
+  return groupDirtyByRow(dirty).map((change) =>
+    updateSql(schema, table, Object.keys(change.set), pk, change, literal),
+  );
 }

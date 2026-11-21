@@ -406,6 +406,10 @@ export function InteractiveGrid({
                               title={describeValue(value)}
                               className={[
                                 inRange ? "selected" : "",
+                                inRange && r === bounds.top ? "range-top" : "",
+                                inRange && r === bounds.bottom ? "range-bottom" : "",
+                                inRange && c === bounds.left ? "range-left" : "",
+                                inRange && c === bounds.right ? "range-right" : "",
                                 r === selected.row && c === selected.col ? "focused" : "",
                                 editsByRow.get(keyOf(row))?.has(col.name) ? "dirty" : "",
                                 layout.pinned.includes(col.name) ? "pinned" : "",
