@@ -2,7 +2,7 @@
    Neutral layers step about 1.1:1 apart so panels, stripes and hover read;
    text runs roughly 15:1, 8:1 and 5.5:1, and faint text stays AA on --panel-2. One saturated accent marks
    selection, focus, the active tab and the primary action. Status colors
-   differ in hue, and changed cells also carry a left bar, not color alone. */
+   differ in hue. */
 :root {
   color-scheme: light;
   --bg: #ffffff;
@@ -417,6 +417,9 @@ kbd {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.nav-sublabel-error {
+  color: var(--danger);
+}
 .nav-sublabel {
   color: var(--text-faint);
   font-size: 11px;
@@ -425,13 +428,16 @@ kbd {
   white-space: nowrap;
   font-weight: 400;
 }
-.nrow.active {
+/* Plain list selection: a solid grey row. Hover is a lighter step of the
+   same grey so the open table never reads as merely hovered. */
+.nrow:hover {
+  background: color-mix(in srgb, var(--panel-2) 55%, var(--panel));
+}
+.nrow.active,
+.nrow.active:hover {
   color: var(--text);
   background: var(--panel-2);
-  box-shadow: inset 2px 0 var(--accent);
-}
-.nrow.active .nic {
-  color: var(--text-dim);
+  box-shadow: none;
 }
 .nrow.schema {
   color: var(--text-dim);
@@ -492,7 +498,6 @@ kbd {
 }
 .shortcut-row.active {
   background: var(--panel-2);
-  box-shadow: inset 2px 0 var(--accent);
 }
 .table-shortcuts .shortcut-open {
   display: flex;
@@ -1116,14 +1121,22 @@ select,
   border: 1px solid var(--border-strong);
   box-shadow: var(--shadow);
   font: 12px var(--ui);
-  transform: translateX(-50%);
-  transition: opacity var(--motion-normal);
+  transition:
+    opacity var(--motion-normal),
+    transform var(--motion-normal);
+}
+.toast > span {
+  overflow-wrap: anywhere;
+}
+.toast .toast-close {
+  margin: -4px -6px -4px 4px;
+  color: var(--text-faint);
 }
 .toast.err {
   background: var(--bg);
 }
-.toast.show {
-  transform: translateX(-50%);
+.toast.err {
+  border-color: color-mix(in srgb, var(--danger), var(--border-strong) 50%);
 }
 .toast > svg {
   color: var(--good);

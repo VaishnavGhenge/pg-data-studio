@@ -1,6 +1,7 @@
 // Single-slot toast, matching the old renderer's toast(): a new call replaces
-// whatever's showing and restarts the auto-dismiss timer (2.2s success / 4s
-// error) rather than queuing multiple toasts.
+// whatever's showing and restarts the auto-dismiss timer rather than queuing
+// multiple toasts. Errors stay 8s (Postgres messages are long to read) and
+// can be dismissed early.
 
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from "react";
 
@@ -12,6 +13,7 @@ interface ToastState {
 
 interface ToastContextValue extends ToastState {
   show: (message: string, isError?: boolean) => void;
+  hide: () => void;
 }
 
 const Ctx = createContext<ToastContextValue | null>(null);
@@ -27,11 +29,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       () => {
         setState((s) => ({ ...s, visible: false }));
       },
-      isError ? 4000 : 2200,
+      isError ? 8000 : 2200,
     );
   }, []);
+  const hide = useCallback(() => {
+    if (timerRef.current) window.clearTimeout(timerRef.current);
+    setState((s) => ({ ...s, visible: false }));
+  }, []);
 
-  return <Ctx.Provider value={{ ...state, show }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ ...state, show, hide }}>{children}</Ctx.Provider>;
 }
 
 export function useToast(): ToastContextValue {

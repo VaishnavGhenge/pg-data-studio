@@ -12,6 +12,8 @@ export interface SourcesState {
   connectedId: string | null;
   connectingId: string | null;
   errorId: string | null;
+  /** Why the last connect to errorId failed, shown on its sidebar row. */
+  errorMessage: string | null;
   dbMeta: DbMeta | null;
 }
 
@@ -20,6 +22,7 @@ const initialState: SourcesState = {
   connectedId: null,
   connectingId: null,
   errorId: null,
+  errorMessage: null,
   dbMeta: null,
 };
 
@@ -27,7 +30,7 @@ export type SourcesAction =
   | { type: "SOURCES_SET"; sources: Source[] }
   | { type: "CONNECT_START"; id: string }
   | { type: "CONNECT_SUCCESS"; id: string; meta: DbMeta }
-  | { type: "CONNECT_ERROR"; id: string }
+  | { type: "CONNECT_ERROR"; id: string; message: string }
   | { type: "DISCONNECTED" };
 
 function sourcesReducer(state: SourcesState, action: SourcesAction): SourcesState {
@@ -35,19 +38,20 @@ function sourcesReducer(state: SourcesState, action: SourcesAction): SourcesStat
     case "SOURCES_SET":
       return { ...state, sources: action.sources };
     case "CONNECT_START":
-      return { ...state, connectingId: action.id, errorId: null };
+      return { ...state, connectingId: action.id, errorId: null, errorMessage: null };
     case "CONNECT_SUCCESS":
       return {
         ...state,
         connectingId: null,
         connectedId: action.id,
         errorId: null,
+        errorMessage: null,
         dbMeta: action.meta,
       };
     case "CONNECT_ERROR":
-      return { ...state, connectingId: null, errorId: action.id };
+      return { ...state, connectingId: null, errorId: action.id, errorMessage: action.message };
     case "DISCONNECTED":
-      return { ...state, connectedId: null, errorId: null, dbMeta: null };
+      return { ...state, connectedId: null, errorId: null, errorMessage: null, dbMeta: null };
     default:
       return state;
   }
