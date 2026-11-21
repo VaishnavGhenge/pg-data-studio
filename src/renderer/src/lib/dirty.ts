@@ -23,8 +23,13 @@ export function isValueChanged(orig: Cell, val: Cell): boolean {
 export function groupDirtyByRow(dirty: Record<string, DirtyEntry>): RowChange[] {
   const groups: Record<string, RowChange> = {};
   Object.values(dirty).forEach((d) => {
-    const g = (groups[d.rowKey] = groups[d.rowKey] || { pk: d.pkVals, set: {} });
+    const g = (groups[d.rowKey] ??= {
+      pk: d.pkVals,
+      set: Object.create(null),
+      original: Object.create(null),
+    });
     g.set[d.col] = d.val;
+    g.original[d.col] = d.old;
   });
   return Object.values(groups);
 }

@@ -8,7 +8,7 @@ const load = loader();
 const { rowKeyOf, displayRowKey } = load("src/renderer/src/lib/rowKey.ts");
 const { dirtyKey, groupDirtyByRow } = load("src/renderer/src/lib/dirty.ts");
 const { WorkspaceRequests } = load("src/renderer/src/lib/workspaceRequests.ts");
-const { tableReducer } = load("src/renderer/src/state/tableStore.tsx");
+const { tableReducer, hasPendingEdits } = load("src/renderer/src/state/tableStore.tsx");
 const deferred = () => {
   let resolve;
   const promise = new Promise((r) => {
@@ -62,6 +62,7 @@ function workspace(api, dirty = {}) {
   const sourceActions = [];
   let discard = true;
   const tableStore = {
+    hasPendingEdits,
     useTableState: () => state,
     useTableDispatch: () => (action) => {
       state = tableReducer(state, action);
@@ -254,7 +255,7 @@ test("accepted discard allows disconnect and deletion", async () => {
   assert.deepEqual(calls, ["disconnect", "delete"]);
 });
 
-function database() {
+function database({ openTunnel, write } = {}) {
   const pools = [];
   const Result = require("pg/lib/result");
   class Pool {
@@ -270,7 +271,8 @@ function database() {
     async connect() {
       if (this.config.host === "bad") throw Error("unreachable");
       return {
-        query: async () => {
+        query: async (sql, params) => {
+          if (!sql.startsWith("select current_database")) return write?.(sql, params);
           if (this.probe) await this.probe.promise;
           return { rows: [{ db: this.config.database, v: "PostgreSQL 17", host: "local" }] };
         },
@@ -303,7 +305,8 @@ function database() {
       return result;
     }
   }
-  return { db: loader({ pg: { Pool } })("src/main/db.ts"), pools };
+  const mocks = { pg: { Pool }, ...(openTunnel && { "./tunnel": { openTunnel } }) };
+  return { db: loader(mocks)("src/main/db.ts"), pools };
 }
 const cfg = (database, host = "localhost") => ({ database, host, user: "postgres", port: 5432 });
 
@@ -329,6 +332,71 @@ test("pagination orders by the complete primary key and preserves quoted case in
   assert.match(pools[0].queries.at(-1).text, /order by "value" desc, "id" asc, "Part" asc/);
   await db.runQuery("public", "items", { orderBy: "id", dir: "desc" });
   assert.match(pools[0].queries.at(-1).text, /order by "id" desc, "Part" asc/);
+});
+
+test("an edit conflict rolls back earlier updates and preserves the original NULL guard", async () => {
+  const queries = [];
+  let updates = 0;
+  const { db } = database({
+    write(sql, params) {
+      queries.push({ sql, params });
+      if (sql.startsWith("UPDATE")) return { rowCount: ++updates === 1 ? 1 : 0 };
+    },
+  });
+  await db.connect(cfg("A"));
+  const edits = [
+    { pk: { id: "1", Part: "a" }, set: { value: "next" }, original: { value: null } },
+    { pk: { id: "2", Part: "a" }, set: { value: "again" }, original: { value: "" } },
+  ];
+  await assert.rejects(db.applyChanges("public", "items", edits), /changed or been deleted/);
+  assert.deepEqual(
+    queries.map(({ sql }) => sql.split(" ")[0]),
+    ["begin", "UPDATE", "UPDATE", "rollback"],
+  );
+  assert.match(queries[1].sql, /WHERE "id" = \$2 AND "Part" = \$3 AND .*IS NOT DISTINCT FROM \$4/);
+  assert.deepEqual(queries[1].params, ["next", "1", "a", null]);
+  assert.deepEqual(queries[2].params, ["again", "2", "a", ""]);
+
+  await assert.rejects(
+    db.applyChanges("public", "items", [{ ...edits[0], original: {} }]),
+    /Missing original value/,
+  );
+  assert.equal(updates, 2);
+});
+
+test("TLS verifies the database hostname for direct connections and SSM forwards", async () => {
+  const { db, pools } = database({
+    openTunnel: async () => ({ localPort: 12345, close() {} }),
+  });
+  const host = "database.example.test";
+  const options = { ...cfg("A", host), ssl: true, sslCa: "test CA" };
+  const certificate = { subjectaltname: "DNS:" + host };
+  await db.testConnect(options);
+  await db.testConnect({ ...options, tunnel: {} });
+  assert.equal(pools[0].config.host, host);
+  assert.equal(pools[1].config.host, "127.0.0.1");
+  for (const {
+    config: { ssl },
+  } of pools) {
+    assert.equal(ssl.rejectUnauthorized, true);
+    assert.equal(ssl.servername, host);
+    assert.equal(ssl.ca, "test CA");
+    assert.equal(ssl.checkServerIdentity("127.0.0.1", certificate), undefined);
+    assert.equal(
+      ssl.checkServerIdentity(host, { subjectaltname: "DNS:wrong.example.test" }).code,
+      "ERR_TLS_CERT_ALTNAME_INVALID",
+    );
+  }
+});
+
+test("disconnect invalidates a connection still resolving saved credentials", async () => {
+  const { db, pools } = database();
+  const config = deferred();
+  const connecting = db.connect(() => config.promise);
+  await db.disconnect();
+  config.resolve(cfg("A"));
+  await assert.rejects(connecting, /superseded/);
+  assert.equal(pools.length, 0);
 });
 
 test("failed replacement leaves the original pool and metadata connected", async () => {
@@ -379,43 +447,43 @@ function storage(t, overrides = {}) {
 }
 const source = { id: "A", name: "A", host: "localhost", database: "postgres", user: "postgres" };
 
-test("source writes persist atomically and leave no temporary files", (t) => {
+test("source writes persist atomically and leave no temporary files", async (t) => {
   const { store, dir } = storage(t);
-  store.saveSource(source);
-  assert.deepEqual(store.listSources(), [source]);
+  await store.saveSource(source);
+  assert.deepEqual(await store.listSources(), [source]);
   assert.deepEqual(fs.readdirSync(dir), ["connections.json"]);
-  store.deleteSource("A");
-  assert.deepEqual(store.listSources(), []);
+  await store.deleteSource("A");
+  assert.deepEqual(await store.listSources(), []);
 });
 
-test("write failure is reported and existing sources survive", (t) => {
+test("write failure is reported and existing sources survive", async (t) => {
   const { store, file, dir } = storage(t, {
     writeFileSync: () => {
       throw Error("disk full");
     },
   });
   fs.writeFileSync(file, JSON.stringify({ sources: [source] }));
-  assert.throws(() => store.saveSource({ ...source, id: "B" }), /disk full/);
-  assert.deepEqual(store.listSources(), [source]);
+  await assert.rejects(store.saveSource({ ...source, id: "B" }), /disk full/);
+  assert.deepEqual(await store.listSources(), [source]);
   assert.deepEqual(fs.readdirSync(dir), ["connections.json"]);
 });
 
-test("rename failure is reported and existing sources survive", (t) => {
+test("rename failure is reported and existing sources survive", async (t) => {
   const { store, file, dir } = storage(t, {
     renameSync: () => {
       throw Error("permission denied");
     },
   });
   fs.writeFileSync(file, JSON.stringify({ sources: [source] }));
-  assert.throws(() => store.deleteSource("A"), /permission denied/);
-  assert.deepEqual(store.listSources(), [source]);
+  await assert.rejects(store.deleteSource("A"), /permission denied/);
+  assert.deepEqual(await store.listSources(), [source]);
   assert.deepEqual(fs.readdirSync(dir), ["connections.json"]);
 });
 
-test("corrupt source file is not silently overwritten", (t) => {
+test("corrupt source file is not silently overwritten", async (t) => {
   const { store, file } = storage(t);
   fs.writeFileSync(file, "{broken");
-  assert.throws(() => store.saveSource(source));
+  await assert.rejects(store.saveSource(source));
   assert.equal(fs.readFileSync(file, "utf8"), "{broken");
 });
 

@@ -970,7 +970,6 @@ thead th .pkbadge {
   border: 1px solid var(--pk);
   border-radius: 3px;
   padding: 0 3px;
-  opacity: 0.85;
 }
 thead th .typ {
   color: var(--text-faint);
@@ -1003,7 +1002,7 @@ thead th .funnel {
   transition: opacity 0.12s;
 }
 thead th:hover .funnel {
-  opacity: 0.7;
+  opacity: 1;
 }
 thead th .funnel:hover {
   opacity: 1;
@@ -1175,17 +1174,7 @@ tbody td.dirty {
 td.dirty .cell {
   box-shadow: inset 2px 0 0 var(--dirty) !important;
 }
-/* A huge inset spread with no blur is the standard "tint the whole box"
-   box-shadow trick — unlike `background`, it paints on top of whatever's
-   already there instead of replacing it, so the tint blends with the row's
-   own shading (alt-row stripe, hover, dirty) instead of overriding it with a
-   flat accent-soft rectangle that visibly seams against the row around it. */
-tbody td.selected {
-  box-shadow: inset 0 0 0 999px var(--sel-fill);
-}
-/* Only the cell the keyboard is on gets the ring. Ringing every cell in a
-   range turned a 15-cell selection into 15 outlined boxes instead of one
-   block; the fill above is what marks the range. */
+/* Keep the keyboard position visible inside a multi-cell selection. */
 td.focused .cell {
   box-shadow: inset 0 0 0 2px var(--accent) !important;
 }

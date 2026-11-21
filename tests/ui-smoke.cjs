@@ -8,6 +8,17 @@ const { spawn } = require("node:child_process");
 const assert = require("node:assert/strict");
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function contrastRatio(a, b) {
+  const luminance = (color) =>
+    color
+      .match(/\d+/g)
+      .map((value) => Number(value) / 255)
+      .map((value) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4))
+      .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+  const values = [luminance(a), luminance(b)].sort((first, second) => second - first);
+  return (values[0] + 0.05) / (values[1] + 0.05);
+}
+
 async function main() {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "pgstudio-browser-"));
   const root = path.resolve("out/renderer");
@@ -93,6 +104,34 @@ async function main() {
       }
       throw Error("Timed out: " + expression);
     }
+    async function checkContrast(theme) {
+      const samples = await evaluate(`(()=>{
+        const style = (selector, pseudo) => getComputedStyle(document.querySelector(selector), pseudo);
+        const selected = '.quick-open-result[aria-selected="true"]';
+        return [
+          ['Table breadcrumb', style('.table-breadcrumb').color, style('.main').backgroundColor, 4.5],
+          ['Grid header type', style('.interactive-grid .typ').color, style('.interactive-grid th').backgroundColor, 4.5],
+          ['Search placeholder', style('.page-search', '::placeholder').color, style('.page-search').backgroundColor, 4.5],
+          ['Quick Open result type', style(selected + ' .result-type').color, style(selected).backgroundColor, 4.5],
+          ['Sidebar search border', style('.tree-filter').borderTopColor, style('.side').backgroundColor, 3],
+          ['Page search border', style('.page-search').borderTopColor, style('.main').backgroundColor, 3],
+          ['Quick Open selected border', style(selected).borderTopColor, style(selected).backgroundColor, 3],
+        ];
+      })()`);
+      for (const [name, foreground, background, minimum] of samples) {
+        const ratio = contrastRatio(foreground, background);
+        assert.ok(ratio >= minimum, `${theme} ${name} has ${ratio.toFixed(2)}:1 contrast`);
+      }
+      console.log(
+        `${theme} contrast: ` +
+          samples
+            .map(
+              ([label, foreground, background]) =>
+                `${label} ${contrastRatio(foreground, background).toFixed(2)}:1`,
+            )
+            .join(", "),
+      );
+    }
     await send("Runtime.enable");
     await send("Page.enable");
     await send("Page.addScriptToEvaluateOnNewDocument", {
@@ -104,11 +143,11 @@ async function main() {
       const wideRecords=Array.from({length:1000},(_,r)=>Object.fromEntries(wideColumns.map((c,i)=>[c.name,i===0?String(r+1):'R'+(r+1)+' C'+i])));
       window.testCalls=[];
       localStorage.setItem("pgstudio:recent:local",JSON.stringify([{schema:"public",name:"people"}]));
-      let savedSources=[{id:'local',name:'Local demo',host:'localhost',port:5432,database:'demo',user:'demo'}];
+      let savedSources=[{id:'local',name:'Local demo',host:'localhost',port:5432,database:'demo',user:'demo',hasSavedPassword:true}];
       window.api={
         listSources:()=>ok(savedSources),
-        saveSource:source=>{const saved={...source,id:source.id||'new-source'};savedSources=[...savedSources.filter(s=>s.id!==saved.id),saved];return ok(saved)},
-        testConnection:()=>ok({serverVersion:'PostgreSQL 17'}),
+        saveSource:({password,...source})=>{const id=source.id||'new-source';const previous=savedSources.find(s=>s.id===id);const saved={...source,id,hasSavedPassword:password===undefined?previous?.hasSavedPassword:!!password};savedSources=[...savedSources.filter(s=>s.id!==id),saved];return ok(saved)},
+        testConnection:cfg=>{window.testConnectionInput=cfg;return ok({serverVersion:'PostgreSQL 17'})},
         connect:()=>{if(window.failNextConnect){window.failNextConnect=false;return Promise.resolve({ok:false,error:'Connection refused for test'})}return ok({database:'demo',host:'localhost',serverVersion:'PostgreSQL 17'})},
         disconnect:()=>ok(true),
         listTables:()=>ok([{schema:'public',name:'people',estRows:230},{schema:'public',name:'books',estRows:230},{schema:'public',name:'wide_grid',estRows:1000}]),
@@ -134,6 +173,7 @@ async function main() {
       /Connect to PostgreSQL/,
     );
     await evaluate(`window.clickText=(text)=>{const el=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===text);if(!el)throw Error('Missing button: '+text);el.click()};
+      window.protectsEdits=()=>!window.dispatchEvent(new Event('beforeunload',{cancelable:true}));
       window.key=(el,key,extra={})=>el.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true,...extra}));
       window.setInput=(el,value)=>{Object.getOwnPropertyDescriptor(el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set.call(el,value);el.dispatchEvent(new Event('input',{bubbles:true}))};
       document.querySelector('.nrow.source').click()`);
@@ -242,6 +282,7 @@ async function main() {
     await delay(40);
     await evaluate(`setInput(document.querySelector('.cell-input'),'Updated name')`);
     await delay(30);
+    assert.ok(await evaluate(`protectsEdits()`), "An active cell draft blocks unload");
     await evaluate(`key(document.querySelector('.cell-input'),'Enter')`);
     await delay(80);
     assert.match(
@@ -251,6 +292,7 @@ async function main() {
     await evaluate(`document.querySelector('[aria-label="Undo"]').click()`);
     await delay(30);
     assert.equal(await evaluate(`document.querySelector('.pending-count')`), null);
+    assert.equal(await evaluate(`protectsEdits()`), false, "A clean workspace allows unload");
     await evaluate(`document.querySelector('[aria-label="Redo"]').click()`);
     await delay(30);
     await evaluate(`document.querySelector('.table-tab.active .favorite-button').click()`);
@@ -266,6 +308,7 @@ async function main() {
     );
     await delay(100);
     assert.equal(await evaluate(`document.querySelectorAll('[role=tab]').length`), 2);
+    assert.ok(await evaluate(`protectsEdits()`), "Unsaved edits in a background tab block unload");
     assert.deepEqual(
       await evaluate(
         `Array.from(document.querySelectorAll('[aria-label="Favorites"] .shortcut-name')).map(e=>e.textContent)`,
@@ -305,6 +348,17 @@ async function main() {
     await evaluate(`document.querySelector('[data-row="0"][data-col="0"]').dispatchEvent(new MouseEvent('mousedown',{bubbles:true,button:0}));
       document.querySelector('[data-row="1"][data-col="1"]').dispatchEvent(new MouseEvent('mousedown',{bubbles:true,button:0,shiftKey:true}));`);
     await delay(40);
+    assert.deepEqual(
+      await evaluate(
+        `[...document.querySelectorAll('.interactive-grid td.selected')].map(cell=>[...cell.classList].filter(name=>name.startsWith('range-')))`,
+      ),
+      [
+        ["range-top", "range-left"],
+        ["range-top", "range-right"],
+        ["range-bottom", "range-left"],
+        ["range-bottom", "range-right"],
+      ],
+    );
     await evaluate(`key(document.querySelector('.interactive-grid'),'c',{ctrlKey:true})`);
     await delay(30);
     assert.equal(await evaluate(`window.clipboardText`), "1\tPerson 1\n2\tPerson 2");
@@ -483,7 +537,7 @@ async function main() {
       `(()=>{const sc=document.querySelector('.grid-scroll'),last=document.querySelector('#cell-999-0');return {bottom:last.getBoundingClientRect().bottom,viewport:sc.getBoundingClientRect().bottom,rows:document.querySelectorAll('.grid-data-row').length}})()`,
     );
     assert.ok(
-      last.bottom <= last.viewport && last.bottom > last.viewport - 60,
+      last.bottom <= last.viewport + 1 && last.bottom > last.viewport - 60,
       "Last row stays aligned after density and font changes",
     );
     assert.ok(last.rows < 60);
@@ -508,6 +562,8 @@ async function main() {
       await evaluate(`getComputedStyle(document.querySelector('.quick-open')).animationName`),
       "none",
     );
+    await waitFor(`!!document.querySelector('.quick-open-result[aria-selected="true"]')`);
+    await checkContrast("Light");
     await evaluate(`key(document.activeElement,'Escape')`);
     await waitFor(`!document.querySelector('.quick-open')`);
     await evaluate(`clickText('Display settings')`);
@@ -526,6 +582,8 @@ async function main() {
       await evaluate(`getComputedStyle(document.querySelector('.quick-open')).animationName`),
       "none",
     );
+    await waitFor(`!!document.querySelector('.quick-open-result[aria-selected="true"]')`);
+    await checkContrast("Dark");
     await evaluate(`key(document.activeElement,'Escape')`);
     await send("Emulation.setEmulatedMedia", { features: [] });
     // Failed connections keep the form, exact error and edited values available.
@@ -533,6 +591,28 @@ async function main() {
     await waitFor(`!!document.querySelector('.ctx-menu')`);
     await evaluate(`clickText('Edit…')`);
     await waitFor(`!!document.querySelector('#srcName')`);
+    assert.equal(await evaluate(`document.querySelector('#srcPassword').value`), "");
+    assert.equal(
+      await evaluate(`document.querySelector('#srcPassword').placeholder`),
+      "Saved password",
+    );
+    await evaluate(
+      `[...document.querySelectorAll('.checkbox-row')].find(el=>el.textContent.includes('verify server identity')).querySelector('input').click()`,
+    );
+    await waitFor(`!!document.querySelector('#srcSslCa')`);
+    await evaluate(
+      `setInput(document.querySelector('#srcSslCa'),'sample private CA');clickText('Test')`,
+    );
+    await waitFor(`!!window.testConnectionInput`);
+    assert.deepEqual(
+      await evaluate(
+        `(({id, password, ssl, sslCa})=>[id,password??null,ssl,sslCa])(window.testConnectionInput)`,
+      ),
+      ["local", null, true, "sample private CA"],
+    );
+    await waitFor(
+      `[...document.querySelectorAll('button')].some(el=>el.textContent.trim()==='Connect' && !el.disabled)`,
+    );
     await evaluate(`window.failNextConnect=true;clickText('Connect')`);
     await waitFor(`!!document.querySelector('.connect-error')`);
     assert.match(

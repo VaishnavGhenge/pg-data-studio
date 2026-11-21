@@ -49,14 +49,18 @@ interface ConnectConfig {
   user: string;
   password: string;
   ssl: boolean;
+  sslCa?: string;
   tunnel?: SsmTunnel | null;
 }
 
 /** A saved data source: a named ConnectConfig with a stable id. */
-interface Source extends ConnectConfig {
+interface Source extends Omit<ConnectConfig, "password"> {
   id: string;
   name: string;
+  hasSavedPassword?: boolean;
 }
+
+type SourceInput = Omit<Source, "hasSavedPassword"> & { password?: string };
 
 /** Operators available for a structured per-column filter. */
 type FilterOp =
@@ -93,10 +97,11 @@ interface QueryResult {
   previewSql: string;
 }
 
-/** One row's edit: match by primary key, apply the SET map. */
+/** One row's edit, guarded by the original values of its edited cells. */
 interface RowChange {
   pk: Record<string, Cell>;
   set: Record<string, Cell>;
+  original: Record<string, Cell>;
 }
 
 interface ApplyResult {
@@ -116,8 +121,8 @@ type IpcResult<T> = IpcOk<T> | IpcErr;
 
 /** The entire surface the renderer can reach (exposed via preload). */
 interface Api {
-  connect(cfg: ConnectConfig): Promise<IpcResult<DbMeta>>;
-  testConnection(cfg: ConnectConfig): Promise<IpcResult<DbMeta>>;
+  connect(id: string): Promise<IpcResult<DbMeta>>;
+  testConnection(cfg: SourceInput): Promise<IpcResult<DbMeta>>;
   disconnect(): Promise<IpcResult<boolean>>;
   status(): Promise<IpcResult<DbStatus>>;
   listTables(): Promise<IpcResult<TableInfo[]>>;
@@ -133,7 +138,8 @@ interface Api {
     changes: RowChange[],
   ): Promise<IpcResult<ApplyResult>>;
   listSources(): Promise<IpcResult<Source[]>>;
-  saveSource(source: Source): Promise<IpcResult<Source>>;
+  saveSource(source: SourceInput): Promise<IpcResult<Source>>;
+  duplicateSource(id: string): Promise<IpcResult<Source>>;
   deleteSource(id: string): Promise<IpcResult<boolean>>;
   beep(): Promise<IpcResult<boolean>>;
   /** Fires when connections.json changes on disk; returns an unsubscribe. */

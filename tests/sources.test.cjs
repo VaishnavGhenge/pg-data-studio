@@ -5,10 +5,19 @@ const os = require("node:os");
 const path = require("node:path");
 const { loader } = require("./load.cjs");
 
-function storage(t) {
+function storage(t, overrides = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pg-data-studio-sources-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const store = loader({ electron: { app: { getPath: () => dir } } })("src/main/store.ts");
+  const safeStorage = {
+    isAsyncEncryptionAvailable: async () => true,
+    getSelectedStorageBackend: () => "gnome_libsecret",
+    encryptStringAsync: async (value) => Buffer.from("mock:" + value),
+    decryptStringAsync: async (buffer) => ({ result: buffer.toString().slice(5) }),
+    ...overrides,
+  };
+  const store = loader({ electron: { app: { getPath: () => dir }, safeStorage } })(
+    "src/main/store.ts",
+  );
   return { store, dir, file: path.join(dir, "connections.json") };
 }
 
@@ -42,21 +51,83 @@ async function baseline(watch) {
   return watch.count();
 }
 
-test("getSource reads the current file, including edits made outside the app", (t) => {
+test("connections read the current file, including edits made outside the app", async (t) => {
   const { store, file } = storage(t);
-  store.saveSource(source);
+  await store.saveSource(source);
   const edited = {
     ...source,
     tunnel: { target: "i-0123456789abcdef0", profile: "", region: "eu-west-1" },
   };
   fs.writeFileSync(file, JSON.stringify({ sources: [edited] }));
-  assert.deepEqual(store.getSource("A"), edited);
-  assert.equal(store.getSource("missing"), null);
+  assert.deepEqual(await store.connectionConfig("A"), { ...edited, password: "" });
+  await assert.rejects(store.connectionConfig("missing"), /no longer exists/);
+});
+
+test("plaintext passwords migrate once and stay out of all source metadata", async (t) => {
+  const { store, file } = storage(t);
+  fs.writeFileSync(file, JSON.stringify({ sources: [{ ...source, password: "legacy secret" }] }));
+  assert.deepEqual(await store.listSources(), [{ ...source, hasSavedPassword: true }]);
+  const saved = JSON.parse(fs.readFileSync(file, "utf8")).sources[0];
+  assert.equal(saved.password, undefined);
+  assert.equal(saved.encryptedPassword, Buffer.from("mock:legacy secret").toString("base64"));
+  assert.equal((await store.connectionConfig("A")).password, "legacy secret");
+  assert.equal(
+    (await store.testConnectionConfig({ ...source, host: "new-host" })).password,
+    "legacy secret",
+  );
+  assert.equal((await store.testConnectionConfig({ ...source, password: "" })).password, "");
+  const renamed = await store.saveSource({ ...source, name: "Renamed" });
+  assert.deepEqual(renamed, { ...source, name: "Renamed", hasSavedPassword: true });
+  const copy = await store.duplicateSource(renamed.id);
+  assert.notEqual(copy.id, renamed.id);
+  assert.equal(copy.hasSavedPassword, true);
+  assert.equal(Object.hasOwn(copy, "encryptedPassword"), false);
+  assert.equal((await store.connectionConfig(copy.id)).password, "legacy secret");
+  assert.equal((await store.saveSource({ ...source, password: "" })).hasSavedPassword, undefined);
+  assert.equal((await store.connectionConfig("A")).password, "");
+});
+
+test("legacy URL migration removes embedded passwords", async (t) => {
+  const { store, file } = storage(t);
+  fs.writeFileSync(
+    file,
+    JSON.stringify({ recent: ["postgres://alice:legacy%20secret@localhost/db"] }),
+  );
+  const [saved] = await store.listSources();
+  assert.equal(saved.hasSavedPassword, true);
+  assert.equal((await store.connectionConfig(saved.id)).password, "legacy secret");
+  assert.deepEqual(
+    (await store.listSources()).map((entry) => entry.id),
+    [saved.id],
+  );
+  assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).recent, undefined);
+});
+
+test("unavailable OS storage preserves legacy files and refuses new plaintext writes", async (t) => {
+  const { store, file } = storage(t, { isAsyncEncryptionAvailable: async () => false });
+  await assert.rejects(store.saveSource({ ...source, password: "secret" }), /unavailable/);
+  assert.equal(fs.existsSync(file), false);
+  const legacy = JSON.stringify({ sources: [{ ...source, password: "legacy secret" }] });
+  fs.writeFileSync(file, legacy);
+  await assert.rejects(store.listSources(), /unavailable/);
+  assert.equal(fs.readFileSync(file, "utf8"), legacy);
+});
+
+test("concurrent saves preserve both sources", async (t) => {
+  const { store } = storage(t);
+  await Promise.all([
+    store.saveSource({ ...source, password: "first" }),
+    store.saveSource({ ...source, id: "B", password: "second" }),
+  ]);
+  assert.deepEqual(
+    (await store.listSources()).map(({ id }) => id),
+    ["A", "B"],
+  );
 });
 
 test("an external atomic replace of connections.json is reported", async (t) => {
   const { store, file } = storage(t);
-  store.saveSource(source);
+  await store.saveSource(source);
   const watch = watching(t, store);
   await settle(100);
   const changed = watch.next();
@@ -64,12 +135,12 @@ test("an external atomic replace of connections.json is reported", async (t) => 
   fs.writeFileSync(temp, JSON.stringify({ sources: [{ ...source, name: "renamed" }] }));
   fs.renameSync(temp, file);
   await changed;
-  assert.equal(store.getSource("A").name, "renamed");
+  assert.equal((await store.connectionConfig("A")).name, "renamed");
 });
 
 test("a burst of writes is coalesced into one reload", async (t) => {
   const { store, file } = storage(t);
-  store.saveSource(source);
+  await store.saveSource(source);
   const watch = watching(t, store);
   const before = await baseline(watch);
   const changed = watch.next();
@@ -82,7 +153,7 @@ test("a burst of writes is coalesced into one reload", async (t) => {
 
 test("other files in the user-data directory don't trigger a reload", async (t) => {
   const { store, dir } = storage(t);
-  store.saveSource(source);
+  await store.saveSource(source);
   const watch = watching(t, store);
   const before = await baseline(watch);
   fs.writeFileSync(path.join(dir, "Cookies"), "chromium churn");

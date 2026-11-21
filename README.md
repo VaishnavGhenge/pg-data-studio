@@ -12,7 +12,7 @@ IPC bridge.
 
 Grab the latest `.dmg` from
 [Releases](https://github.com/VaishnavGhenge/pg-data-studio/releases). Apple
-Silicon only, macOS 11 or later.
+Silicon only, macOS 13 or later.
 
 The build is not signed with an Apple Developer ID, so macOS quarantines it.
 After dragging the app into Applications:
@@ -34,7 +34,7 @@ quarantine flag.
 
 ## Requirements
 
-- Node.js 20.19+ or 22.12+ (required by the installed Vite toolchain)
+- Node.js 22.12+ (required by Electron)
 - A reachable Postgres database
 
 ## Run it
@@ -48,10 +48,18 @@ Run `npm run build` first, then `npm start` to preview that production build
 without packaging a distributable.
 
 On first launch, click **+** in the sidebar to add a data source — a structured
-form (host/port/user/password/database/SSL) that stays in sync with a raw
+form (host/port/user/password/database/TLS) that stays in sync with a raw
 `postgres://` URL field, whichever you'd rather edit. Saved sources are
-remembered for next time (stored in plaintext in the app's user-data dir — same
-trust model as a local `.env`).
+remembered for next time. Stored passwords are encrypted using the OS
+credential store. Existing plaintext passwords migrate on first load. Editing
+an existing connection keeps its saved password unless you replace it or choose
+**Remove saved password**. Saving a password requires an available OS credential
+store.
+
+**Use TLS and verify server identity** checks the certificate and database
+hostname, including through an SSM tunnel. Use the optional PEM field to trust
+a private CA, such as an RDS CA bundle. Existing sources with SSL enabled now
+verify certificates. The URL form shows this setting as `sslmode=verify-full`.
 
 The sidebar reloads when that file changes, so a connection edited by hand or
 by a script is picked up without restarting the app.
@@ -110,7 +118,10 @@ the Dock doesn't get your shell's `PATH`.
 - **Review**: dirty cells/rows are highlighted; **Review changes** opens a
   before/after comparison and SQL preview. The toolbar shows the pending-change
   count and offers undo/redo or **Revert all**.
-- **Save**: all edits apply in one transaction; on failure, nothing is written.
+- **Save**: all edits apply in one transaction. If an edited cell has changed
+  since it was read, or the row was deleted, the batch rolls back and pending
+  edits stay available to copy. Closing the app asks before discarding edits,
+  including edits in background tabs.
 
 Appearance is configurable per install (theme, density, font size, motion) and per
 source (a colour and an environment label, so production looks different from
@@ -217,7 +228,7 @@ npm run build
 node tests/ui-smoke.cjs   # after npm run build
 ```
 
-`npm test` runs `tests/*.test.cjs`, currently 30 regression tests covering row
+`npm test` runs `tests/*.test.cjs`, covering row
 identity, asynchronous action ordering, tab snapshots and edit preservation,
 page-size changes, PostgreSQL driver parsing, connection replacement, and
 filesystem failures. `tests/load.cjs` compiles the real TypeScript modules with
@@ -243,5 +254,3 @@ so it never touches a real database or your Electron profile. Run it after
   composite types are still edited as text.
 - The quick filter searches only the loaded page; use WHERE or column filters
   to search the table on the server.
-- Saved connection passwords are stored in plaintext in the app's user-data
-  dir, not the macOS Keychain.
