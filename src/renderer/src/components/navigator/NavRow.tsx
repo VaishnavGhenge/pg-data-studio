@@ -9,7 +9,7 @@ interface NavRowProps {
   depth: number;
   icon: ReactNode;
   label: string;
-  subLabel?: string;
+  subLabel?: ReactNode;
   // The current tree-filter query, if this label should highlight its match
   // (only table rows are actually filtered by it — see NavigatorTree).
   matchQuery?: string;

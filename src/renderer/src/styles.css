@@ -473,7 +473,6 @@ body.col-resizing {
   padding-right: 10px;
   cursor: pointer;
   color: var(--text-dim);
-  border-left: 2px solid transparent;
   user-select: none;
 }
 .nrow:hover {
@@ -483,7 +482,6 @@ body.col-resizing {
 .nrow.active {
   background: var(--sel-fill);
   color: var(--text);
-  border-left-color: var(--accent);
 }
 .nrow .chev {
   flex: 0 0 14px;
@@ -1113,15 +1111,8 @@ td.editable:hover .cell {
 tbody td.dirty {
   background: var(--dirty-soft) !important;
 }
-/* !important: td.editable:hover .cell (0,3,1) outranks td.dirty/.selected
-   .cell (0,2,1) and .cell:focus (0,2,0) on plain specificity, so hovering a
-   dirty/selected/actively-edited cell would silently fall back to the
-   hover rule's neutral 1px ring instead of showing the real state border —
-   exactly the "no blue border" bug reported when hovering a selected NULL
-   cell. */
-td.dirty .cell {
-  box-shadow: inset 2px 0 0 var(--dirty) !important;
-}
+/* Edited cells are marked by their amber fill alone (tbody td.dirty above),
+   with no edge bar. */
 /* Keep the keyboard position visible inside a multi-cell selection. */
 td.focused .cell {
   box-shadow: inset 0 0 0 2px var(--accent) !important;
@@ -1353,11 +1344,14 @@ tbody .gutter {
 }
 
 /* ---- toast ---- */
+/* Bottom-right, raised above the grid footer so it never covers the pager,
+   row count or View SQL. */
 .toast {
   position: fixed;
-  bottom: 26px;
-  left: 50%;
-  transform: translateX(-50%) translateY(20px);
+  bottom: 64px;
+  right: 24px;
+  max-width: min(440px, calc(100vw - 48px));
+  transform: translateY(8px);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1384,7 +1378,8 @@ tbody .gutter {
 }
 .toast.show {
   opacity: 1;
-  transform: translateX(-50%) translateY(0);
+  transform: translateY(0);
+  pointer-events: auto;
 }
 
 @media (prefers-reduced-motion: reduce) {

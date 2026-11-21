@@ -43,8 +43,8 @@ export function useSourceActions() {
         tableDispatch({ type: "CLEAR_WORKSPACE" });
         return true;
       } catch (e) {
-        sourcesDispatch({ type: "CONNECT_ERROR", id: src.id });
         const message = e instanceof Error ? e.message : String(e);
+        sourcesDispatch({ type: "CONNECT_ERROR", id: src.id, message });
         onFailure?.(message);
         toast(message, true);
         return false;

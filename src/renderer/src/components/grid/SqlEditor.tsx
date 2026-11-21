@@ -66,7 +66,6 @@ const editorTheme = EditorView.theme({
   ".cm-tooltip-autocomplete ul li[aria-selected]": {
     background: "var(--panel-2)",
     color: "var(--text)",
-    boxShadow: "inset 2px 0 var(--accent)",
   },
   ".cm-completionIcon": { display: "none" },
 });

@@ -125,7 +125,7 @@ export function NavigatorTree({
   favorites,
   onToggleFavorite,
 }: NavigatorTreeProps) {
-  const { sources, connectedId, connectingId, errorId } = useSourcesState();
+  const { sources, connectedId, connectingId, errorId, errorMessage } = useSourcesState();
   const { connect } = useSourceActions();
   const { current } = useTableState();
   const { show: toast } = useToast();
@@ -303,6 +303,7 @@ export function NavigatorTree({
               key={src.id}
               source={src}
               status={status}
+              error={status === "error" ? (errorMessage ?? undefined) : undefined}
               open={open}
               onClick={() => {
                 if (connected) dispatch({ type: "TOGGLE_KEY", key: kSrc(src.id) });
