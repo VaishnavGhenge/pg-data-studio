@@ -1,59 +1,7 @@
 :root {
-  --bg: #ffffff;
-  --panel: #f3f5f8;
-  --panel-2: #e9edf2;
-  --editor: #ffffff;
-  --border: #d9dee6;
-  --border-strong: #c3cbd6;
-  --text: #1f2329;
-  --text-dim: #5b6472;
-  --text-faint: #8a93a1;
-  --accent: #1a74d6;
-  --accent-soft: rgba(26, 116, 214, 0.12);
-  --dirty: #b9761b;
-  --dirty-soft: rgba(229, 161, 58, 0.18);
-  --good: #2f8f63;
-  --good-soft: rgba(47, 143, 99, 0.14);
-  --danger: #d1493f;
-  --danger-soft: rgba(209, 73, 63, 0.12);
-  --row-alt: #f7f9fb;
-  --sel: rgba(26, 116, 214, 0.1);
-  /* --sel is the hover wash. Anything the user actually selected uses this,
-     roughly twice the alpha, so selected and unselected never read alike. */
-  --sel-fill: rgba(26, 116, 214, 0.22);
-  --pk: #7b53c9;
-  --shadow: 0 8px 30px rgba(20, 30, 50, 0.14);
+  /* Colors live in workspace.css; this file only sets fonts and layout. */
   --mono: ui-monospace, "SF Mono", "SFMono-Regular", "Menlo", "Consolas", monospace;
   --ui: system-ui, -apple-system, "Segoe UI", sans-serif;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]):not([data-theme="dark"]) {
-    /* Deeper, more saturated navy than the old neutral greys — panels sit a
-       shade above the canvas instead of blending into it, closer to the
-       layered look of DataGrip/TablePlus. */
-    --bg: #0a0d13;
-    --panel: #10141c;
-    --panel-2: #1a1f2b;
-    --editor: #0d1017;
-    --border: #1f2530;
-    --border-strong: #2c3342;
-    --text: #e8ebf2;
-    --text-dim: #95a0b5;
-    --text-faint: #5c6578;
-    --accent: #4c8dff;
-    --accent-soft: rgba(76, 141, 255, 0.16);
-    --dirty: #e2a53c;
-    --dirty-soft: rgba(226, 165, 60, 0.16);
-    --good: #34c976;
-    --good-soft: rgba(52, 201, 118, 0.16);
-    --danger: #f2645c;
-    --danger-soft: rgba(242, 100, 92, 0.15);
-    --row-alt: #12161f;
-    --sel: rgba(76, 141, 255, 0.12);
-    --sel-fill: rgba(76, 141, 255, 0.32);
-    --pk: #b58cf5;
-    --shadow: 0 12px 36px rgba(0, 0, 0, 0.55);
-  }
 }
 
 * {
@@ -260,7 +208,7 @@ body {
   top: 1px;
   width: 4px;
   height: 8px;
-  border: solid #fff;
+  border: solid var(--action-text);
   border-width: 0 1.5px 1.5px 0;
   transform: rotate(45deg);
 }
@@ -377,7 +325,7 @@ body {
 }
 .btn.primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--action-text);
 }
 .btn.primary:hover {
   filter: brightness(1.08);
@@ -768,7 +716,7 @@ body.col-resizing {
   padding: 0 3px;
   border-radius: 8px;
   background: var(--dirty);
-  color: #fff;
+  color: var(--action-text);
   font-size: 9.5px;
   font-weight: 700;
   display: flex;
@@ -1299,7 +1247,7 @@ tbody .gutter {
 .modal.confirm.danger .btn.primary {
   background: var(--danger);
   border-color: var(--danger);
-  color: #fff;
+  color: var(--action-text);
 }
 
 /* ---- cell value editor ---- */
@@ -1445,35 +1393,8 @@ tbody .gutter {
   }
 }
 
-/* Workspace controls share the same palette in explicit and system themes. */
 :root {
   --grid-font-size: 12px;
-  color-scheme: light;
-  --text-faint: #667181;
-}
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --bg: #0a0d13;
-  --panel: #10141c;
-  --panel-2: #1a1f2b;
-  --editor: #0d1017;
-  --border: #283040;
-  --border-strong: #3b465a;
-  --text: #e8ebf2;
-  --text-dim: #a2aec3;
-  --text-faint: #8b97ad;
-  --accent: #6b9fff;
-  --accent-soft: rgba(76, 141, 255, 0.16);
-  --dirty: #e2a53c;
-  --dirty-soft: rgba(226, 165, 60, 0.16);
-  --good: #34c976;
-  --good-soft: rgba(52, 201, 118, 0.16);
-  --danger: #f2645c;
-  --danger-soft: rgba(242, 100, 92, 0.15);
-  --row-alt: #12161f;
-  --sel: rgba(76, 141, 255, 0.12);
-  --pk: #b58cf5;
-  --shadow: 0 12px 36px rgba(0, 0, 0, 0.55);
 }
 button,
 input,
