@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { Modal } from "../common/Modal";
 import { readPreference, writePreference } from "../../lib/preferences";
+import {
+  APPEARANCE_PRESETS,
+  useSourceAppearance,
+  writeAppearance,
+  type SourceAppearance,
+} from "../../lib/sourceAppearance";
 import { useSourcesState } from "../../state/sourcesStore";
 import { CloseIcon, SettingsIcon } from "../common/icons";
 
@@ -9,10 +15,6 @@ interface Preferences {
   density: "compact" | "comfortable";
   fontSize: number;
   motion?: "auto" | "reduced";
-}
-export interface SourceAppearance {
-  color: string;
-  environment: string;
 }
 export function DisplaySettings() {
   const [open, setOpen] = useState(false);
@@ -25,15 +27,7 @@ export function DisplaySettings() {
     }),
   );
   const { connectedId } = useSourcesState();
-  const [appearance, setAppearance] = useState<SourceAppearance>({
-    color: "#708d75",
-    environment: "",
-  });
-  useEffect(() => {
-    setAppearance(
-      readPreference("source-appearance:" + connectedId, { color: "#708d75", environment: "" }),
-    );
-  }, [connectedId]);
+  const appearance = useSourceAppearance(connectedId);
   useEffect(() => {
     writePreference("display", prefs);
     const media = matchMedia("(prefers-color-scheme: dark)");
@@ -49,10 +43,9 @@ export function DisplaySettings() {
     return () => media.removeEventListener("change", apply);
   }, [prefs]);
   function updateAppearance(next: SourceAppearance) {
-    setAppearance(next);
-    writePreference("source-appearance:" + connectedId, next);
-    window.dispatchEvent(new Event("source-appearance-change"));
+    if (connectedId) writeAppearance(connectedId, next);
   }
+  const isPreset = APPEARANCE_PRESETS.some((p) => p.color === appearance.color);
   return (
     <>
       <button
@@ -129,14 +122,60 @@ export function DisplaySettings() {
           </label>
           {connectedId && (
             <>
-              <label>
-                Connection color
-                <input
-                  type="color"
-                  value={appearance.color}
-                  onChange={(e) => updateAppearance({ ...appearance, color: e.target.value })}
-                />
-              </label>
+              <div className="settings-row">
+                <span id="connection-color-label">Connection color</span>
+                <div
+                  className="color-choices"
+                  role="radiogroup"
+                  aria-labelledby="connection-color-label"
+                >
+                  <button
+                    className="color-choice none"
+                    role="radio"
+                    aria-checked={!appearance.color}
+                    aria-label="No color"
+                    title="No color"
+                    onClick={() => updateAppearance({ ...appearance, color: "" })}
+                  />
+                  {APPEARANCE_PRESETS.map((preset) => (
+                    <button
+                      key={preset.color}
+                      className="color-choice"
+                      role="radio"
+                      aria-checked={appearance.color === preset.color}
+                      aria-label={preset.label}
+                      title={preset.label}
+                      style={{ background: preset.color }}
+                      onClick={() =>
+                        updateAppearance({
+                          color: preset.color,
+                          // Replace an empty or preset label; keep one the user typed.
+                          environment:
+                            !appearance.environment ||
+                            APPEARANCE_PRESETS.some((p) => p.label === appearance.environment)
+                              ? preset.label
+                              : appearance.environment,
+                        })
+                      }
+                    />
+                  ))}
+                  <label
+                    className="color-choice custom"
+                    title="Custom color"
+                    data-checked={!!appearance.color && !isPreset}
+                    style={
+                      appearance.color && !isPreset ? { background: appearance.color } : undefined
+                    }
+                  >
+                    <input
+                      type="color"
+                      aria-label="Custom color"
+                      value={appearance.color || "#6b7280"}
+                      onChange={(e) => updateAppearance({ ...appearance, color: e.target.value })}
+                    />
+                  </label>
+                </div>
+              </div>
               <label>
                 Environment label
                 <input
