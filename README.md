@@ -57,9 +57,12 @@ an existing connection keeps its saved password unless you replace it or choose
 store.
 
 **Use TLS and verify server identity** checks the certificate and database
-hostname, including through an SSM tunnel. Use the optional PEM field to trust
-a private CA, such as an RDS CA bundle. Existing sources with SSL enabled now
-verify certificates. The URL form shows this setting as `sslmode=verify-full`.
+hostname, including through an SSM tunnel. Amazon RDS hosts
+(`*.rds.amazonaws.com`) work out of the box: the app ships Amazon's public RDS
+root certificates (`src/main/rdsCaBundle.ts`, refreshed with
+`node scripts/update-rds-ca.mjs`). For any other private CA, paste its PEM into
+the optional CA field. Existing sources with SSL enabled now verify
+certificates. The URL form shows this setting as `sslmode=verify-full`.
 
 The sidebar reloads when that file changes, so a connection edited by hand or
 by a script is picked up without restarting the app.
