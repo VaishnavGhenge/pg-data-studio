@@ -8,6 +8,8 @@ import { isIP } from "node:net";
 import { checkServerIdentity } from "node:tls";
 import { quoteIdent, updateSql } from "../shared/updateSql";
 import { openTunnel, type Tunnel } from "./tunnel";
+import { RDS_CA_BUNDLE } from "./rdsCaBundle";
+import { trustedCa } from "./tlsTrust";
 
 let pool: Pool | null = null;
 let tunnel: Tunnel | null = null;
@@ -30,7 +32,7 @@ function poolConfig(cfg: ConnectConfig, max: number, via: Tunnel | null) {
     ssl: cfg.ssl
       ? {
           rejectUnauthorized: true,
-          ca: cfg.sslCa?.trim() || undefined,
+          ca: trustedCa(host, cfg.sslCa, RDS_CA_BUNDLE),
           servername: isIP(host) ? undefined : host,
           checkServerIdentity: (
             _name: string,

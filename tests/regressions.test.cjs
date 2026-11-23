@@ -380,13 +380,33 @@ test("TLS verifies the database hostname for direct connections and SSM forwards
   } of pools) {
     assert.equal(ssl.rejectUnauthorized, true);
     assert.equal(ssl.servername, host);
-    assert.equal(ssl.ca, "test CA");
+    assert.deepEqual(ssl.ca, ["test CA"]);
     assert.equal(ssl.checkServerIdentity("127.0.0.1", certificate), undefined);
     assert.equal(
       ssl.checkServerIdentity(host, { subjectaltname: "DNS:wrong.example.test" }).code,
       "ERR_TLS_CERT_ALTNAME_INVALID",
     );
   }
+});
+
+test("RDS hosts trust the bundled Amazon RDS roots plus Node's public roots", async () => {
+  const { rootCertificates } = require("node:tls");
+  const { RDS_CA_BUNDLE } = loader()("src/main/rdsCaBundle.ts");
+  const { db, pools } = database({
+    openTunnel: async () => ({ localPort: 12345, close() {} }),
+  });
+  const rds = "dev.abc123.eu-west-1.rds.amazonaws.com";
+  await db.testConnect({ ...cfg("A", rds), ssl: true, tunnel: {} });
+  await db.testConnect({ ...cfg("A", rds), ssl: true, sslCa: "extra CA" });
+  await db.testConnect({ ...cfg("A", "db.example.test"), ssl: true });
+  await db.testConnect({ ...cfg("A", "rds.amazonaws.com.example.test"), ssl: true });
+  const [tunnelled, withExtra, plain, lookalike] = pools.map((p) => p.config.ssl.ca);
+  assert.deepEqual(tunnelled, [...rootCertificates, RDS_CA_BUNDLE]);
+  assert.deepEqual(withExtra, [...rootCertificates, RDS_CA_BUNDLE, "extra CA"]);
+  assert.equal(plain, undefined, "non-RDS hosts keep Node's default trust store");
+  assert.equal(lookalike, undefined, "only real *.rds.amazonaws.com hosts get the RDS roots");
+  assert.equal(pools[0].config.ssl.servername, rds);
+  assert.ok((RDS_CA_BUNDLE.match(/BEGIN CERTIFICATE/g) ?? []).length >= 10);
 });
 
 test("disconnect invalidates a connection still resolving saved credentials", async () => {
