@@ -1,6 +1,7 @@
 import type { MouseEvent, ReactNode } from "react";
 import { NavRow } from "./NavRow";
 import { DatabaseIcon, MoreIcon } from "../common/icons";
+import { useSourceAppearance } from "../../lib/sourceAppearance";
 
 interface SourceRowProps {
   source: Source;
@@ -22,12 +23,21 @@ export function SourceRow({
   onContextMenu,
   children,
 }: SourceRowProps) {
+  const appearance = useSourceAppearance(source.id);
   return (
     <>
       <NavRow
         kind="source"
         depth={0}
-        icon={<DatabaseIcon size={15} />}
+        icon={
+          appearance.color ? (
+            <span className="source-color" style={{ color: appearance.color }}>
+              <DatabaseIcon size={15} />
+            </span>
+          ) : (
+            <DatabaseIcon size={15} />
+          )
+        }
         label={source.name}
         subLabel={
           error ? (

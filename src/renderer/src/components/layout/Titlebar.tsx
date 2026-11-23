@@ -1,26 +1,23 @@
 import { useSourcesState } from "../../state/sourcesStore";
-import { useEffect, useState } from "react";
-import { DisplaySettings, type SourceAppearance } from "./DisplaySettings";
-import { readPreference } from "../../lib/preferences";
+import type { CSSProperties } from "react";
+import { DisplaySettings } from "./DisplaySettings";
+import { useSourceAppearance } from "../../lib/sourceAppearance";
 import { DatabaseIcon, SearchIcon } from "../common/icons";
 
 export function Titlebar({ onQuickOpen }: { onQuickOpen: () => void }) {
   const { dbMeta, connectedId, connectingId } = useSourcesState();
-  const [appearance, setAppearance] = useState<SourceAppearance>({
-    color: "#708d75",
-    environment: "",
-  });
-  useEffect(() => {
-    const update = () =>
-      setAppearance(
-        readPreference("source-appearance:" + connectedId, { color: "#708d75", environment: "" }),
-      );
-    update();
-    window.addEventListener("source-appearance-change", update);
-    return () => window.removeEventListener("source-appearance-change", update);
-  }, [connectedId]);
+  const appearance = useSourceAppearance(connectingId ? null : connectedId);
+  const marked = !!connectedId && !connectingId && !!appearance.color;
   return (
-    <header className="titlebar" style={{ paddingLeft: /Mac/.test(navigator.platform) ? 78 : 20 }}>
+    <header
+      className={"titlebar" + (marked ? " marked" : "")}
+      style={
+        {
+          paddingLeft: /Mac/.test(navigator.platform) ? 78 : 20,
+          "--conn-color": appearance.color || undefined,
+        } as CSSProperties
+      }
+    >
       <div className="workspace-brand">
         <span className="brand-symbol">
           <DatabaseIcon size={18} />
@@ -38,9 +35,8 @@ export function Titlebar({ onQuickOpen }: { onQuickOpen: () => void }) {
         <kbd>{/Mac/.test(navigator.platform) ? "⌘" : "Ctrl"} K</kbd>
       </button>
       <div className="connection-presence">
-        {connectedId && !connectingId && (
-          <span className="environment-badge" title="Connected">
-            <span className="status-dot" style={{ background: appearance.color }} />
+        {connectedId && !connectingId && appearance.environment && (
+          <span className={"environment-badge" + (marked ? " marked" : "")}>
             {appearance.environment}
           </span>
         )}
@@ -54,6 +50,7 @@ export function Titlebar({ onQuickOpen }: { onQuickOpen: () => void }) {
             className="titlebar-conn"
             title={dbMeta ? `${dbMeta.database} · ${dbMeta.host}` : undefined}
           >
+            {connectedId && <span className="status-dot online" />}
             {dbMeta?.database ?? "No connection"}
           </span>
         )}
